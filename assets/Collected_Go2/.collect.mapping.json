@@ -1,0 +1,35 @@
+{
+    "version": "1.0",
+    "file_records": [
+        {
+            "source_url": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Robots/Unitree/Go2/configuration/go2_description_base.usd",
+            "source_hash": "6da9d9e0bbf8a10d65af7f70e9891478731eb885",
+            "target_url": "./configuration/go2_description_base.usd",
+            "target_hash": "d8aa2742f3c33d32f16d49348d08d85d09542a99"
+        },
+        {
+            "source_url": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Robots/Unitree/Go2/configuration/go2_description_physics.usd",
+            "source_hash": "333f7e354a3a57fe5601e30bc71ce7b3dfe3fe86",
+            "target_url": "./configuration/go2_description_physics.usd",
+            "target_hash": "894ff83b77bd26912bc95088b7cd970288e1891f"
+        },
+        {
+            "source_url": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Robots/Unitree/Go2/configuration/go2_description_robot.usd",
+            "source_hash": "9f0f899ddafabd374d25fc2591f3993b8f48f039",
+            "target_url": "./configuration/go2_description_robot.usd",
+            "target_hash": "b62f3d8df5d5fd9f091ead4b08e99db1dd14050a"
+        },
+        {
+            "source_url": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Robots/Unitree/Go2/configuration/go2_description_sensor.usd",
+            "source_hash": "e09ffad7b550f47dbc807856a4f49396b1c9501a",
+            "target_url": "./configuration/go2_description_sensor.usd",
+            "target_hash": "0c8e76fd756c98c1113bffbff0d33580bee5ddba"
+        },
+        {
+            "source_url": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Robots/Unitree/Go2/go2.usd",
+            "source_hash": "31ebf824a9f7f2a8a2caded1fd3e1004f74994f9",
+            "target_url": "./go2.usd",
+            "target_hash": "bf4e8f76364f11ca8914960facbe44d84cdafa81"
+        }
+    ]
+}
