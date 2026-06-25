@@ -1,0 +1,21 @@
+# Existing repository assets used by the Isaac Sim spatial pipeline.
+# Keep these as source paths. Do not overwrite collected assets from scripts.
+
+repo_root: /home/aes/isaac_ws
+
+usd:
+  world: /home/aes/isaac_ws/scenes/Warehouse.usd
+  spot: /home/aes/isaac_ws/assets/Collected_spot/spot_lidar_realsense.usd
+
+prims:
+  world: /World
+  spot: /World/Spot
+  # Fill these after running 01_inspect_prims.py and 02_validate_sensor_mounts.py.
+  base_link: null
+  lidar_mount: null
+  camera_mount: null
+  imu_mount: null
+
+outputs:
+  logs_dir: /home/aes/isaac_ws/logs
+  bags_dir: /home/aes/isaac_ws/bags

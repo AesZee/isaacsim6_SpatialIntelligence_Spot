@@ -1,0 +1,34 @@
+# Isaac Sim ROS2 bridge authoring notes.
+# This is configuration intent, not proof that the bridge is publishing.
+
+ros2:
+  distro: null
+  domain_id: null
+  use_sim_time: true
+
+isaac_sim:
+  version: 6
+  python: /home/aes/isaacsim/python.sh
+  headless_default: false
+
+graphs:
+  clock:
+    enabled: false
+    graph_path: /World/ROS2/Clock
+    publish_topic: /clock
+  tf:
+    enabled: false
+    graph_path: /World/ROS2/TF
+    root_frame: odom
+    child_frames: []
+  sensors:
+    enabled: false
+    graph_path: /World/ROS2/Sensors
+    lidar: null
+    camera: null
+    imu: null
+
+save_policy:
+  authoring_target: null
+  allow_overwrite_existing_usd: false
+  note: Save only after topics, frames, and timestamps are validated.

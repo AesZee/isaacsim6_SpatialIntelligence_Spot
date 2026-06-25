@@ -1,0 +1,46 @@
+# ROS2 topic contract draft.
+# Replace placeholder names only after inspecting live Isaac Sim ROS2 bridge output.
+
+clock:
+  topic: /clock
+  type: rosgraph_msgs/msg/Clock
+
+tf:
+  dynamic_topic: /tf
+  static_topic: /tf_static
+  dynamic_type: tf2_msgs/msg/TFMessage
+  static_type: tf2_msgs/msg/TFMessage
+
+sensors:
+  lidar:
+    topic: null
+    type: null
+    expected_type_candidates:
+      - sensor_msgs/msg/PointCloud2
+      - sensor_msgs/msg/LaserScan
+    frame_id: null
+  camera_color:
+    topic: null
+    type: null
+    expected_type_candidates:
+      - sensor_msgs/msg/Image
+    frame_id: null
+  camera_depth:
+    topic: null
+    type: null
+    expected_type_candidates:
+      - sensor_msgs/msg/Image
+    frame_id: null
+  camera_info:
+    topic: null
+    type: sensor_msgs/msg/CameraInfo
+    frame_id: null
+  imu:
+    topic: null
+    type: sensor_msgs/msg/Imu
+    frame_id: null
+
+validation_commands:
+  list_topics: ros2 topic list -t
+  echo_clock_once: ros2 topic echo /clock --once
+  tf_snapshot: ros2 run tf2_tools view_frames
