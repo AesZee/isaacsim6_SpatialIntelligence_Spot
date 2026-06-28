@@ -61,6 +61,52 @@ Expected sensor `header.frame_id` values:
 /spot/d455/imu -> Imu_Sensor
 ```
 
+## Observed Result
+
+Observed on 2026-06-28 with ROS2 Jazzy:
+
+```text
+Bag: /home/aes/isaac_ws/bags/m03_sensor_tf_baseline_20260628_123742
+Storage: mcap
+Bag contract helper result: PASS
+Replay with --clock: PASS
+```
+
+The bag contract helper passed all expected topic type checks:
+
+```text
+/clock [rosgraph_msgs/msg/Clock]
+/tf [tf2_msgs/msg/TFMessage]
+/spot/lidar/points [sensor_msgs/msg/PointCloud2]
+/spot/d455/color/image [sensor_msgs/msg/Image]
+/spot/d455/color/camera_info [sensor_msgs/msg/CameraInfo]
+/spot/d455/depth/image [sensor_msgs/msg/Image]
+/spot/d455/imu [sensor_msgs/msg/Imu]
+```
+
+Replay exposed the expected baseline topics plus RViz interaction topics:
+
+```text
+/clock [rosgraph_msgs/msg/Clock]
+/spot/d455/color/camera_info [sensor_msgs/msg/CameraInfo]
+/spot/d455/color/image [sensor_msgs/msg/Image]
+/spot/d455/depth/image [sensor_msgs/msg/Image]
+/spot/d455/imu [sensor_msgs/msg/Imu]
+/spot/lidar/points [sensor_msgs/msg/PointCloud2]
+/tf [tf2_msgs/msg/TFMessage]
+/tf_static [tf2_msgs/msg/TFMessage]
+```
+
+Observed replayed sensor headers preserved the expected frame IDs:
+
+```text
+/spot/lidar/points -> sensor
+/spot/d455/color/image -> Camera_OmniVision_OV9782_Color
+/spot/d455/color/camera_info -> Camera_OmniVision_OV9782_Color
+/spot/d455/depth/image -> Camera_Pseudo_Depth
+/spot/d455/imu -> Imu_Sensor
+```
+
 ## Terminal 1: Run Isaac Sim Runtime
 
 Run the existing Isaac Sim runtime. Do not save the USD stage.
@@ -103,11 +149,13 @@ TF display: enabled
 PointCloud2 topic: /spot/lidar/points
 Color image topic: /spot/d455/color/image
 Depth image topic: /spot/d455/depth/image
-IMU topic: /spot/d455/imu
 ```
 
 RViz2 should show a coherent TF tree and LiDAR points in the `world` fixed
 frame. The image displays should update while Isaac Sim playback is active.
+The baseline RViz2 config does not include an IMU display because ROS2 Jazzy's
+default RViz plugin set may not provide `rviz_default_plugins/Imu`. Validate
+`/spot/d455/imu` through terminal header checks and the bag contract helper.
 
 If RViz2 reports missing transforms, re-run:
 

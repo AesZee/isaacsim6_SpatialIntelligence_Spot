@@ -111,24 +111,6 @@ Visualization Manager:
         Reliability Policy: Best Effort
         Value: /spot/d455/depth/image
       Value: true
-    - Acceleration properties:
-        Alpha: 1
-        Color: 255; 25; 0
-        Scale: 1
-      Class: rviz_default_plugins/Imu
-      Enabled: true
-      Name: IMU
-      Orientation properties:
-        Alpha: 1
-        Color: 255; 255; 0
-        Scale: 1
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Best Effort
-        Value: /spot/d455/imu
-      Value: true
   Enabled: true
   Global Options:
     Background Color: 35; 35; 35
