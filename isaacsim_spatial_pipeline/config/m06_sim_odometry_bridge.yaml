@@ -1,0 +1,21 @@
+# Milestone #6 simulation-only odometry bridge.
+#
+# This bridge derives odometry from live Isaac Sim TF motion, specifically
+# source_parent_frame -> source_child_frame. It is not physical robot wheel,
+# leg, visual, LiDAR, camera, depth, or IMU odometry.
+#
+# Publishing is opt-in. Leave enable_sim_odom false unless running a controlled
+# simulation experiment and documenting that /odom is simulation-derived.
+m06_sim_odometry_bridge:
+  ros__parameters:
+    use_sim_time: true
+    enable_sim_odom: false
+    publish_odom_topic: true
+    publish_tf: true
+    source_parent_frame: "world"
+    source_child_frame: "body"
+    odom_frame: "odom"
+    base_frame: "base_link"
+    odom_topic: "/odom"
+    publish_rate_hz: 20.0
+    planar_only: true
