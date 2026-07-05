@@ -236,9 +236,18 @@ def main() -> int:
     node = SimOdometryBridge()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
+        if rclpy.ok():
+            try:
+                rclpy.shutdown()
+            except KeyboardInterrupt:
+                pass
     return 0
 
 

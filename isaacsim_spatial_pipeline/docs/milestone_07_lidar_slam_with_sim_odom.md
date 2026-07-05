@@ -20,7 +20,7 @@ when the live simulation graph provides:
 /spot/lidar/points
 /scan
 /odom
-odom -> base_link
+odom -> world -> body -> base_link
 ```
 
 This is simulation-only SLAM bring-up. It is not physical Spot odometry,
@@ -39,7 +39,8 @@ Inputs:
 /spot/lidar/points [sensor_msgs/msg/PointCloud2] from live Isaac Sim
 /scan [sensor_msgs/msg/LaserScan] from Milestone #4 PointCloud2-to-LaserScan
 /odom [nav_msgs/msg/Odometry] from Milestone #6 simulation-only odometry
-odom -> base_link from Milestone #6 simulation-only odometry
+odom -> world from Milestone #7, with world -> body from Isaac Sim and
+body -> base_link from the Milestone #4 alias
 ```
 
 SLAM outputs must come from `slam_toolbox`:
@@ -79,12 +80,15 @@ body -> base_link
 sensor -> os1_frame
 ```
 
+Milestone #7 adds a static `odom -> world` root so the Isaac TF tree remains
+connected to the ROS odom tree without assigning two parents to `base_link`.
+
 The Milestone #6 odometry bridge remains:
 
 ```text
 source: world -> body
 output: /odom
-output TF: odom -> base_link
+output TF: disabled in Milestone #7
 ```
 
 ## Files
@@ -96,6 +100,7 @@ isaacsim_spatial_pipeline/docs/milestone_07_lidar_slam_with_sim_odom.md
 isaacsim_spatial_pipeline/config/m07_slam_toolbox_sim_odom.yaml
 isaacsim_spatial_pipeline/launch/m07_lidar_slam_with_sim_odom.launch.py
 isaacsim_spatial_pipeline/scripts/70_validate_lidar_slam_with_sim_odom.py
+isaacsim_spatial_pipeline/scripts/71_laserscan_qos_relay.py
 isaacsim_spatial_pipeline/rviz/m07_lidar_slam_with_sim_odom.rviz
 ```
 
@@ -115,6 +120,10 @@ mode: mapping
 
 SLAM consumes `/scan`, not `/spot/lidar/points` directly. The raw PointCloud2
 topic is converted by the Milestone #4 PointCloud2-to-LaserScan node.
+In this ROS2 Jazzy environment, the installed PointCloud2-to-LaserScan node
+publishes best-effort LaserScan data while `slam_toolbox` requests reliable
+LaserScan data. Milestone #7 routes the converter output through `/scan_raw`
+and republishes it as reliable `/scan` using `71_laserscan_qos_relay.py`.
 
 The configuration keeps Jazzy-compatible parameter names already used by the
 Milestone #4 `slam_toolbox` configuration and narrows `max_laser_range` to
@@ -145,10 +154,15 @@ The launch file starts:
 
 ```text
 m04_static_aliases.launch.py
-m04_pointcloud_to_laserscan.launch.py
-m06_sim_odometry_bridge.launch.py enable_sim_odom:=true publish_tf:=true
+m07_odom_to_world_alias static transform
+m04_pointcloud_to_laserscan.launch.py scan_topic:=/scan_raw
+71_laserscan_qos_relay.py input_topic:=/scan_raw output_topic:=/scan
+m06_sim_odometry_bridge.launch.py enable_sim_odom:=true publish_tf:=false
 slam_toolbox with config/m07_slam_toolbox_sim_odom.yaml
 ```
+
+Milestone #7 keeps both Milestone #4 aliases and adds only `odom -> world` so
+`slam_toolbox` can transform between `base_link` and `os1_frame`.
 
 It does not start Isaac Sim. Start Isaac Sim separately as shown above.
 
@@ -189,8 +203,8 @@ The validator is read-only. It checks:
 /odom exists as nav_msgs/msg/Odometry
 /odom header.frame_id == odom
 /odom child_frame_id == base_link
-odom -> base_link observed in TF
-body -> base_link alias observed or conflict reported
+odom -> base_link TF chain observed
+body -> base_link alias observed
 sensor -> os1_frame alias observed
 /map exists as nav_msgs/msg/OccupancyGrid
 map frame observed in TF
@@ -238,7 +252,7 @@ Live Isaac Sim is running and playing.
 /odom publishes as nav_msgs/msg/Odometry from Milestone #6 sim odom.
 /odom uses header.frame_id odom.
 /odom uses child_frame_id base_link.
-odom -> base_link is observed.
+odom -> base_link TF chain is observed.
 /map publishes as nav_msgs/msg/OccupancyGrid from slam_toolbox.
 map -> odom is observed from slam_toolbox.
 RViz opens with Fixed Frame map.
@@ -259,7 +273,7 @@ Aliases work.
 /scan works.
 Simulation odometry works.
 /odom works.
-odom -> base_link works.
+odom -> base_link TF chain works.
 slam_toolbox starts but /map or map -> odom is not observed within the validation window.
 ```
 
@@ -280,7 +294,7 @@ Milestone #7 fails if:
 /scan frame_id is not os1_frame.
 /odom is missing while enable_sim_odom is true.
 /odom has wrong frame IDs.
-odom -> base_link is missing.
+odom -> base_link TF chain is missing.
 slam_toolbox consumes the wrong scan topic.
 A fake map or fake map -> odom is published by custom code.
 A severe TF conflict is detected and not reported.
@@ -289,39 +303,31 @@ Camera/depth/IMU fusion is introduced.
 Bags are recorded by Codex.
 ```
 
-## TF Conflict Handling
+## TF Composition
 
-Milestone #4 publishes:
+Milestone #7 uses this TF composition:
 
 ```text
+odom -> world
+world -> body
 body -> base_link
+world -> sensor
+sensor -> os1_frame
 ```
 
-Milestone #6 can publish:
+The Milestone #6 bridge publishes `/odom` messages but does not publish direct
+`odom -> base_link` TF in Milestone #7. This avoids a parent conflict with the
+Milestone #4 `body -> base_link` alias while preserving the transform chain that
+`slam_toolbox` needs.
 
-```text
-odom -> base_link
-```
-
-Those two edges give `base_link` two parents when both are active. A TF tree
-should not silently contain competing parents for a child frame. Milestone #7
-keeps the inherited behavior visible and reports this as a severe TF conflict
-instead of hiding it with arbitrary transforms.
-
-Possible future fixes require an explicit documented decision, such as:
+An alternative future design would also be valid if documented consistently:
 
 ```text
 odom -> body, while body -> base_link remains static
 ```
 
-or:
-
-```text
-odom -> base_link, while removing or disabling body -> base_link only in a
-clearly documented future milestone
-```
-
-This milestone does not destructively change Milestone #4 or Milestone #6.
+This milestone does not destructively change Milestone #4 or Milestone #6; it
+only changes how the Milestone #7 combined launch composes those pieces.
 
 ## Known Limitations
 

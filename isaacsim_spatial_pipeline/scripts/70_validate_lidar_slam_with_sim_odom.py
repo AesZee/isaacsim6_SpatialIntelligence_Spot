@@ -176,6 +176,26 @@ def edge_exists(edges: set[tuple[str, str]], parent: str, child: str) -> bool:
     return (parent, child) in edges
 
 
+def graph_has_chain(edges: set[tuple[str, str]], parent: str, child: str) -> bool:
+    if parent == child:
+        return True
+    children_by_parent: dict[str, set[str]] = defaultdict(set)
+    for edge_parent, edge_child in edges:
+        children_by_parent[edge_parent].add(edge_child)
+    visited = set()
+    frontier = [parent]
+    while frontier:
+        current = frontier.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        for next_child in children_by_parent.get(current, set()):
+            if next_child == child:
+                return True
+            frontier.append(next_child)
+    return False
+
+
 def parent_map(edges: set[tuple[str, str]]) -> dict[str, set[str]]:
     parents: dict[str, set[str]] = defaultdict(set)
     for parent, child in edges:
@@ -259,19 +279,19 @@ def check_runtime_state(state: ValidationState, args: argparse.Namespace) -> lis
 def check_tf(state: ValidationState, args: argparse.Namespace) -> list[CheckResult]:
     results = []
     if edge_exists(state.static_edges, "body", args.base_frame):
-        results.append(CheckResult(Level.PASS, f"body -> {args.base_frame}", "Milestone #4 alias observed on /tf_static"))
+        results.append(CheckResult(Level.PASS, f"body -> {args.base_frame}", "base alias observed on /tf_static"))
     else:
-        results.append(CheckResult(Level.FAIL, f"body -> {args.base_frame}", "Milestone #4 alias missing"))
+        results.append(CheckResult(Level.FAIL, f"body -> {args.base_frame}", "base alias missing"))
 
     if edge_exists(state.static_edges, "sensor", args.scan_frame):
         results.append(CheckResult(Level.PASS, f"sensor -> {args.scan_frame}", "Milestone #4 alias observed on /tf_static"))
     else:
         results.append(CheckResult(Level.FAIL, f"sensor -> {args.scan_frame}", "Milestone #4 alias missing"))
 
-    if edge_exists(state.dynamic_edges, args.odom_frame, args.base_frame):
-        results.append(CheckResult(Level.PASS, f"{args.odom_frame} -> {args.base_frame}", "Milestone #6 odometry TF observed on /tf"))
+    if graph_has_chain(state.edges, args.odom_frame, args.base_frame):
+        results.append(CheckResult(Level.PASS, f"{args.odom_frame} -> {args.base_frame}", "TF chain observed"))
     else:
-        results.append(CheckResult(Level.FAIL, f"{args.odom_frame} -> {args.base_frame}", "odometry TF missing while simulation odometry is expected"))
+        results.append(CheckResult(Level.FAIL, f"{args.odom_frame} -> {args.base_frame}", "TF chain missing while simulation odometry is expected"))
 
     tf_frames = set()
     for parent, child in state.edges:
@@ -378,7 +398,8 @@ def main() -> int:
                 print(f"  {parent} -> {child}")
 
         print("\nContract notes")
-        print("  /odom and odom -> base_link must come from the Milestone #6 simulation-only bridge.")
+        print("  /odom must come from the Milestone #6 simulation-only bridge.")
+        print("  Milestone #7 declares odom -> world so Isaac TF provides the odom -> base_link chain.")
         print("  /scan must come from Milestone #4 PointCloud2-to-LaserScan conversion.")
         print("  /map and map -> odom must come from slam_toolbox, not custom fake publishers.")
         print("  A child frame with multiple parents is reported as a severe TF conflict.")

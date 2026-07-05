@@ -1,16 +1,23 @@
 """Publish Milestone #4 compatibility aliases without changing Isaac frames."""
 
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    publish_base_link_alias = LaunchConfiguration("publish_base_link_alias")
+
     return LaunchDescription(
         [
+            DeclareLaunchArgument("publish_base_link_alias", default_value="true"),
             Node(
                 package="tf2_ros",
                 executable="static_transform_publisher",
                 name="m04_body_to_base_link_alias",
+                condition=IfCondition(publish_base_link_alias),
                 output="screen",
                 arguments=[
                     "--x",
