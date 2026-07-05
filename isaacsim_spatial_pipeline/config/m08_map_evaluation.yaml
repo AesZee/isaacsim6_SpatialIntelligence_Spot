@@ -1,0 +1,14 @@
+map_evaluation:
+  ros__parameters:
+    map_topic: /map
+    scan_topic: /scan
+    odom_topic: /odom
+    map_frame: map
+    odom_frame: odom
+    base_frame: base_link
+    min_known_ratio_for_pass: 0.05
+    max_unknown_ratio_for_pass: 0.98
+    min_occupied_ratio_for_pass: 0.001
+    default_inspection_duration: 10.0
+    default_save_duration: 15.0
+    output_root: /home/aes/isaac_ws/maps
