@@ -97,6 +97,17 @@ def transform(pose: Pose, alignment: tuple[float, float, float, float]) -> Pose:
     )
 
 
+def relative(previous: Pose, current: Pose) -> tuple[float, float, float, float]:
+    dx, dy = current.x - previous.x, current.y - previous.y
+    cosine, sine = math.cos(previous.yaw), math.sin(previous.yaw)
+    return (
+        cosine * dx + sine * dy,
+        -sine * dx + cosine * dy,
+        current.z - previous.z,
+        wrap(current.yaw - previous.yaw),
+    )
+
+
 def stats(values: list[float]) -> dict:
     ordered = sorted(values)
     p95 = ordered[min(len(ordered) - 1, math.ceil(0.95 * len(ordered)) - 1)]
@@ -131,16 +142,10 @@ def evaluate(pairs: list[tuple[Pose, Pose]], rejected: dict) -> tuple[dict, list
         }
         if index:
             previous_truth, previous_estimate = aligned[index - 1]
-            truth_delta = (truth.x - previous_truth.x, truth.y - previous_truth.y, truth.z - previous_truth.z)
-            estimate_delta = (
-                estimate.x - previous_estimate.x,
-                estimate.y - previous_estimate.y,
-                estimate.z - previous_estimate.z,
-            )
-            row["rpe_translation_m"] = math.dist(truth_delta, estimate_delta)
-            row["rpe_rotation_rad"] = abs(
-                wrap((estimate.yaw - previous_estimate.yaw) - (truth.yaw - previous_truth.yaw))
-            )
+            truth_delta = relative(previous_truth, truth)
+            estimate_delta = relative(previous_estimate, estimate)
+            row["rpe_translation_m"] = math.dist(truth_delta[:3], estimate_delta[:3])
+            row["rpe_rotation_rad"] = abs(wrap(estimate_delta[3] - truth_delta[3]))
             rpe_translation.append(row["rpe_translation_m"])
             rpe_rotation.append(row["rpe_rotation_rad"])
         series.append(row)

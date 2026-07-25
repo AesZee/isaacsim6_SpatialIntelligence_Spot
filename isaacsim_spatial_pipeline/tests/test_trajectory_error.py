@@ -41,6 +41,14 @@ class TrajectoryErrorTests(unittest.TestCase):
         self.assertEqual(len(pairs), 1)
         self.assertEqual(rejected["timestamp_tolerance"], 1)
 
+    def test_known_scale_error_has_expected_ate_and_rpe(self) -> None:
+        ground = [evaluator.Pose(float(i), float(i), 0.0, 0.0, 0.0) for i in range(3)]
+        estimate = [evaluator.Pose(float(i), 1.1 * i, 0.0, 0.0, 0.0) for i in range(3)]
+        report, _ = evaluator.evaluate(list(zip(ground, estimate)), {})
+        self.assertAlmostEqual(report["ate"]["translation_m"]["rmse"], math.sqrt(0.02 / 3.0))
+        self.assertAlmostEqual(report["rpe"]["translation_m"]["rmse"], 0.1)
+        self.assertEqual(report["ate"]["rotation_rad"]["rmse"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

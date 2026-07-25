@@ -4,17 +4,36 @@
 import argparse
 import csv
 import json
+import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
+from rclpy.executors import ExternalShutdownException
 from tf2_msgs.msg import TFMessage
 
 
 FIELDS = ["timestamp", "x", "y", "z", "qx", "qy", "qz", "qw"]
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def git_revision() -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        timeout=5.0,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else "unavailable"
 
 
 def seconds(stamp) -> float:
@@ -61,12 +80,15 @@ def main() -> int:
         raise ValueError("duration must be positive")
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=False)
+    started_at = utc_now()
     rclpy.init()
     node = PoseRecorder()
     deadline = time.monotonic() + args.duration
     try:
         while rclpy.ok() and time.monotonic() < deadline:
             rclpy.spin_once(node, timeout_sec=0.1)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
     finally:
         node.destroy_node()
         if rclpy.ok():
@@ -80,6 +102,9 @@ def main() -> int:
                 "result": result,
                 "trajectory_id": args.trajectory_id,
                 "duration_sec": args.duration,
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "git_revision": git_revision(),
                 "ground_truth_frame": "world -> body",
                 "estimate_topic": "/odom",
                 "ground_truth_samples": len(node.ground_truth),
