@@ -478,7 +478,7 @@ class AutonomousHarness:
             for index, experiment in enumerate(self.config["experiments"]):
                 if index >= int(self.config["limits"]["max_experiments"]):
                     raise HarnessFailure("maximum experiment count reached")
-                self.manifest["experiments"].append(self.run_experiment(index, experiment))
+                self.run_experiment(index, experiment)
 
             results = [experiment["result"] for experiment in self.manifest["experiments"]]
             self.manifest["result"] = max(results, key=lambda result: RESULTS[result])
@@ -486,6 +486,9 @@ class AutonomousHarness:
         except Exception as error:
             self.manifest["result"] = "FAIL"
             self.manifest["failure"] = str(error)
+            for experiment in self.manifest["experiments"]:
+                experiment.setdefault("finished_at", utc_now())
+                experiment.setdefault("failure", str(error))
             return 1
         finally:
             self.manager.cleanup()
@@ -528,10 +531,13 @@ class AutonomousHarness:
             "name": name,
             "profile": profile,
             "trajectory": trajectory,
+            "started_at": utc_now(),
             "result": "FAIL",
             "source_usd_unchanged": True,
             "output_within_limit": True,
         }
+        self.manifest["experiments"].append(evidence)
+        self._write_outputs()
         smoke_deadline = None
 
         runtime_command = ros_command(
@@ -731,6 +737,7 @@ class AutonomousHarness:
         )
         evidence["artifact_quality"] = read_overall_result(quality_result.log_path) or "FAIL"
         evidence["map_stats"] = read_json(map_directory / "map_stats.json")
+        evidence["map_metadata"] = read_json(map_directory / "map_metadata.json")
         stats = evidence["map_stats"] or {}
         meets_targets = (
             float(stats.get("known_ratio", 0.0)) >= float(self.config["evaluation"]["min_known_ratio"])
@@ -749,6 +756,8 @@ class AutonomousHarness:
             sha256(Path(runtime["world_usd"])) == self.manifest["source_usd"]["sha256_before"]
         )
         evidence["result"] = classify_result(evidence)
+        evidence["finished_at"] = utc_now()
+        self._write_outputs()
         return evidence
 
     def wait_for_runtime(self, process: ManagedProcess, status_path: Path) -> None:
@@ -858,6 +867,15 @@ class AutonomousHarness:
                 "profile",
                 "trajectory",
                 "result",
+                "min_height",
+                "max_height",
+                "range_min",
+                "range_max",
+                "angle_min",
+                "angle_max",
+                "map_width_cells",
+                "map_height_cells",
+                "map_resolution_m",
                 "known_ratio",
                 "occupied_cells",
                 "duration_sec",
@@ -868,13 +886,23 @@ class AutonomousHarness:
             writer.writeheader()
             for experiment in self.manifest["experiments"]:
                 stats = experiment.get("map_stats") or {}
-                scan = ((experiment.get("scan_metrics") or {}).get("laserscan") or {})
+                scan_metrics = experiment.get("scan_metrics") or {}
+                scan = scan_metrics.get("laserscan") or {}
+                parameters = scan_metrics.get("parameters") or {}
+                metadata = experiment.get("map_metadata") or {}
                 writer.writerow(
                     {
                         "experiment": experiment["name"],
                         "profile": experiment["profile"],
                         "trajectory": (experiment.get("trajectory") or {}).get("name"),
                         "result": experiment["result"],
+                        **{name: parameters.get(name) for name in (
+                            "min_height", "max_height", "range_min",
+                            "range_max", "angle_min", "angle_max",
+                        )},
+                        "map_width_cells": metadata.get("width"),
+                        "map_height_cells": metadata.get("height"),
+                        "map_resolution_m": metadata.get("resolution"),
                         "known_ratio": stats.get("known_ratio"),
                         "occupied_cells": stats.get("occupied_cells"),
                         "duration_sec": experiment.get("motion_duration_wall_sec"),
@@ -934,6 +962,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument(
+        "--experiment",
+        action="append",
+        help="Run only the named declared experiment; repeat to select more than one.",
+    )
     return parser.parse_args()
 
 
@@ -942,6 +975,12 @@ def main() -> int:
     config_path = Path(args.config)
     try:
         config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        if args.experiment:
+            declared = {item["name"]: item for item in config["experiments"]}
+            missing = [name for name in args.experiment if name not in declared]
+            if missing:
+                raise ValueError(f"unknown experiment selection: {', '.join(missing)}")
+            config["experiments"] = [declared[name] for name in args.experiment]
         validate_config(config)
     except (OSError, ValueError, yaml.YAMLError) as error:
         print(f"FAIL: invalid autonomous runtime configuration: {error}")

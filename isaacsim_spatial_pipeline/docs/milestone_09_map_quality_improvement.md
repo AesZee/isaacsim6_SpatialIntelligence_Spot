@@ -2,7 +2,7 @@
 
 ## Status
 
-`NOT COMPLETE — a validated runtime experiment is still required.`
+`COMPLETE — WARN (measured improvement is reproducible; portfolio targets are not met).`
 
 The last validated Milestone #8 map is a real `slam_toolbox` map, but its
 quality is `WARN`:
@@ -14,8 +14,8 @@ unknown_ratio: 0.9847
 ```
 
 Milestone #9 adds read-only scan diagnostics, six configurable projection
-parameters, and reproducible JSON/CSV experiment records. No Milestone #9
-runtime result is claimed in this document.
+parameters, and reproducible JSON/CSV experiment records. The observed results
+below come from bounded autonomous runs on 2026-07-25.
 
 ## Purpose
 
@@ -343,53 +343,43 @@ Any map, odometry, or transform is fabricated.
 USD is modified, a bag is recorded, packages are installed, or sensor fusion is introduced.
 ```
 
-## Observed-Result Template
+## Observed Result
 
-Do not mark this milestone complete until this section is filled from directly
-observed manual or autonomous runtime evidence:
+Isaac Sim 6.0 and ROS 2 Jazzy used the read-only `Warehouse.usd` stage and the
+same `warehouse_mapping_loop` for every completed comparison. Validators
+confirmed `/spot/lidar/points`, finite `/scan` in `os1_frame`, `/odom`,
+`map -> odom`, and no severe TF parent conflict before, during, and after
+motion. Every completed map passed artifact validation.
 
-```text
-Date:
-Isaac Sim version: 6.0
-ROS distribution: Jazzy
-Scene and starting pose:
-Manual route and duration:
+| Profile | Result | known ratio | occupied cells | scan Hz |
+| --- | --- | ---: | ---: | ---: |
+| `baseline_m08` | WARN | 0.020394 | 98 | 1.947 |
+| `wide_diagnostic` | WARN | 0.023300 | 279 | 1.942 |
+| `near_range_only` | FAIL | — | — | — |
+| `front_180_only` | WARN | 0.020004 | 49 | 1.940 |
 
-Contract validator result:
-/spot/lidar/points type and measured frequency:
-/scan type, frame_id, and measured frequency:
-/odom frame IDs:
-map -> odom publisher:
-TF parent-conflict result:
+`near_range_only` passed preflight with 105 finite ranges, then the first
+motion watchdog observed no finite `/scan` return for its full four-second
+window. The harness stopped before map saving, preserved the failure record,
+terminated its children, and left the source USD unchanged.
 
-Experiment:
-Profile:
-min_height:
-max_height:
-range_min:
-range_max:
-angle_min:
-angle_max:
-total points/cloud:
-finite XYZ/cloud:
-height-slice points/cloud:
-valid projected beams/cloud:
-finite ranges/scan:
-infinite ranges/scan:
-finite range min/median/max:
-saved map directory:
-artifact validation:
-known_ratio:
-occupied_cells:
-occupied_ratio:
-RViz screenshot:
-trajectory notes:
+The comparison selected `wide_diagnostic`. Three subsequent identical runs
+produced known ratios 0.022935–0.023339, occupied-cell counts 276–281,
+identical 641×659 dimensions, and no major variance. This materially improves
+the Milestone 8 baseline of 0.0153/30 and establishes reproducibility, but it
+does not meet the unchanged 0.10/500 portfolio targets. No RViz screenshot was
+captured; machine-readable scan, TF, map, and artifact evidence is retained.
 
-JSON record:
-CSV record:
-Overall result: PASS / WARN / FAIL
-Reason:
-```
+Evidence:
+
+- `artifacts/m09_matrix/run_20260725T153155_71653_a1d15a1d`
+- `artifacts/m09_matrix/run_20260725T154313_91410_af69dd1a`
+- `artifacts/m09_matrix/summary_20260725T1549/m09_experiments.json`
+- `artifacts/m09_matrix/summary_20260725T1549/m09_experiments.csv`
+- `artifacts/m10_repeatability/run_20260725T155013_102304_7bb8f0b1`
+- `artifacts/m10_repeatability/summary_20260725T1605/repeatability.json`
+
+Overall result: `WARN`.
 
 ## Evidence Required Before Completion
 
@@ -406,4 +396,5 @@ Reason:
    structure.
 7. A comparison against `known_ratio: 0.0153` and `occupied_cells: 30`.
 
-Until that runtime evidence exists, Milestone #9 remains `NOT COMPLETE`.
+The runtime evidence exists. The unresolved quality target and missing visual
+capture remain explicit WARN items.

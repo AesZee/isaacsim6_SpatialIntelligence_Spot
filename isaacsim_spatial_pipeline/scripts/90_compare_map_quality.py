@@ -272,11 +272,29 @@ def build_experiment_records(
 def write_experiment_outputs(records: list[dict], json_output: Path, csv_output: Path) -> None:
     json_output.parent.mkdir(parents=True, exist_ok=True)
     csv_output.parent.mkdir(parents=True, exist_ok=True)
-    json_output.write_text(json.dumps({"experiments": records}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    winner = max(records, key=lambda record: record["metrics"]["score"])
+    payload = {
+        "selected_winner": {
+            "experiment": winner["experiment"],
+            "profile": winner["profile"],
+            "score": winner["metrics"]["score"],
+            "known_ratio": winner["metrics"]["known_ratio"],
+            "occupied_cells": winner["metrics"]["occupied_cells"],
+        },
+        "targets": {"known_ratio": 0.10, "occupied_cells": 500},
+        "targets_met": (
+            winner["metrics"]["known_ratio"] >= 0.10
+            and winner["metrics"]["occupied_cells"] >= 500
+        ),
+        "experiments": records,
+    }
+    with json_output.open("x", encoding="utf-8") as stream:
+        json.dump(payload, stream, indent=2, sort_keys=True)
+        stream.write("\n")
 
     metric_names = list(records[0]["metrics"])
     fieldnames = ["experiment", "profile", "map_directory", *PARAMETER_NAMES, *metric_names]
-    with csv_output.open("w", encoding="utf-8", newline="") as stream:
+    with csv_output.open("x", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
         for record in records:

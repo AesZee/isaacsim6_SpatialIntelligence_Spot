@@ -8,7 +8,14 @@ import statistics
 from pathlib import Path
 
 
-METRICS = ("known_ratio", "occupied_cells", "duration_sec", "scan_frequency_hz")
+METRICS = (
+    "map_width_cells",
+    "map_height_cells",
+    "known_ratio",
+    "occupied_cells",
+    "duration_sec",
+    "scan_frequency_hz",
+)
 
 
 def rows_from_manifest(path: Path) -> list[dict]:
@@ -16,6 +23,7 @@ def rows_from_manifest(path: Path) -> list[dict]:
     rows = []
     for experiment in payload.get("experiments", []):
         stats = experiment.get("map_stats") or {}
+        metadata = experiment.get("map_metadata") or {}
         scan = ((experiment.get("scan_metrics") or {}).get("laserscan") or {})
         rows.append(
             {
@@ -25,6 +33,8 @@ def rows_from_manifest(path: Path) -> list[dict]:
                 "trajectory": experiment.get("trajectory"),
                 "result": experiment.get("result"),
                 "motion_complete": bool(experiment.get("motion_complete")),
+                "map_width_cells": metadata.get("width"),
+                "map_height_cells": metadata.get("height"),
                 "known_ratio": stats.get("known_ratio"),
                 "occupied_cells": stats.get("occupied_cells"),
                 "duration_sec": experiment.get("motion_duration_wall_sec"),
@@ -40,7 +50,17 @@ def summarize(rows: list[dict]) -> dict:
         for row in rows
     }
     summary = {
-        "result": "PASS" if len(rows) >= 3 and len(declared_inputs) == 1 and all(row["motion_complete"] for row in rows) else "FAIL",
+        "result": (
+            "PASS"
+            if (
+                len(rows) >= 3
+                and len(declared_inputs) == 1
+                and all(row["motion_complete"] for row in rows)
+                and all(row["result"] in {"PASS", "WARN"} for row in rows)
+                and all(row[name] is not None for row in rows for name in METRICS)
+            )
+            else "FAIL"
+        ),
         "run_count": len(rows),
         "identical_declared_inputs": len(declared_inputs) == 1,
         "metrics": {},
@@ -54,10 +74,22 @@ def summarize(rows: list[dict]) -> dict:
                 "mean": statistics.fmean(values),
                 "max": max(values),
                 "stdev": statistics.stdev(values) if len(values) > 1 else 0.0,
+                "coefficient_of_variation": (
+                    statistics.stdev(values) / abs(statistics.fmean(values))
+                    if len(values) > 1 and statistics.fmean(values)
+                    else 0.0
+                ),
             }
             if values
             else None
         )
+    summary["major_variance"] = any(
+        summary["metrics"][name]
+        and summary["metrics"][name]["coefficient_of_variation"] > 0.20
+        for name in ("known_ratio", "occupied_cells", "duration_sec", "scan_frequency_hz")
+    )
+    if summary["result"] == "PASS" and summary["major_variance"]:
+        summary["result"] = "WARN"
     return summary
 
 

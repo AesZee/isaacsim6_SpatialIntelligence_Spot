@@ -18,7 +18,7 @@ limits:
   total_duration_sec: 1800.0
   startup_timeout_sec: 180.0
   topic_timeout_sec: 30.0
-  trajectory_timeout_sec: 120.0
+  trajectory_timeout_sec: 300.0
   shutdown_timeout_sec: 15.0
   watchdog_window_sec: 4.0
   output_max_mb: 1800.0
