@@ -9,6 +9,7 @@ graphs, and keeps Isaac Sim open until the GUI is closed manually.
 """
 
 import argparse
+import math
 import os
 from pathlib import Path
 
@@ -62,6 +63,29 @@ SENSOR_PRIMS = (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--world-usd", default=str(DEFAULT_WORLD_USD))
+    parser.add_argument(
+        "--enable-scripted-motion",
+        action="store_true",
+        help="Move the Spot root prim with a runtime-only kinematic path while playback is running.",
+    )
+    parser.add_argument(
+        "--motion-speed",
+        type=float,
+        default=0.5,
+        help="Kinematic scripted motion speed in meters per second.",
+    )
+    parser.add_argument(
+        "--motion-radius-x",
+        type=float,
+        default=6.0,
+        help="Half-width of the scripted warehouse loop in meters.",
+    )
+    parser.add_argument(
+        "--motion-radius-y",
+        type=float,
+        default=4.0,
+        help="Half-height of the scripted warehouse loop in meters.",
+    )
     return parser.parse_args()
 
 
@@ -69,9 +93,10 @@ args = parse_args()
 simulation_app = SimulationApp({"headless": False})
 
 import omni.graph.core as og
+import omni.timeline
 import omni.usd
 from isaacsim.core.experimental.utils import app as app_utils
-from pxr import Sdf
+from pxr import Gf, Sdf, Usd, UsdGeom
 
 
 def wait_for_stage_load() -> None:
@@ -277,6 +302,87 @@ def print_graph_summary(label: str, graph_path: str, node_names: tuple[str, ...]
         print(f"  {node_name}: {node.get_type_name() if node.is_valid() else '<missing>'}")
 
 
+class ScriptedSpotMotion:
+    """Runtime-only kinematic motion for SLAM coverage experiments."""
+
+    def __init__(self, stage, prim_path: str, speed: float, radius_x: float, radius_y: float) -> None:
+        if speed <= 0.0:
+            raise ValueError("--motion-speed must be positive")
+        if radius_x <= 0.0 or radius_y <= 0.0:
+            raise ValueError("--motion-radius-x and --motion-radius-y must be positive")
+
+        self.prim = stage.GetPrimAtPath(prim_path)
+        if not self.prim.IsValid():
+            raise RuntimeError(f"Cannot enable scripted motion; prim is missing: {prim_path}")
+
+        self.xform_api = UsdGeom.XformCommonAPI(self.prim)
+        self.timeline = omni.timeline.get_timeline_interface()
+        self.speed = speed
+        self.points = (
+            (0.0, 0.0),
+            (radius_x, 0.0),
+            (radius_x, radius_y),
+            (-radius_x, radius_y),
+            (-radius_x, -radius_y),
+            (radius_x, -radius_y),
+            (radius_x, 0.0),
+            (0.0, 0.0),
+        )
+        self.segment_lengths = [
+            math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(self.points, self.points[1:])
+        ]
+        self.loop_length = sum(self.segment_lengths)
+        self.start_time = None
+
+        translation, rotation = self._read_initial_pose()
+        self.origin = translation
+        self.initial_rotation = rotation
+
+    def _read_initial_pose(self) -> tuple[Gf.Vec3d, Gf.Vec3f]:
+        try:
+            translation, rotation, _, _, _ = self.xform_api.GetXformVectors(Usd.TimeCode.Default())
+            return Gf.Vec3d(translation), Gf.Vec3f(rotation)
+        except Exception:
+            transform = UsdGeom.Xformable(self.prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+            return Gf.Vec3d(transform.ExtractTranslation()), Gf.Vec3f(0.0, 0.0, 0.0)
+
+    def update(self) -> None:
+        if not self.timeline.is_playing():
+            self.start_time = None
+            return
+
+        now = self.timeline.get_current_time()
+        if self.start_time is None:
+            self.start_time = now
+
+        distance = ((now - self.start_time) * self.speed) % self.loop_length
+        x_offset, y_offset, yaw = self._sample_path(distance)
+        self.xform_api.SetTranslate(
+            Gf.Vec3d(self.origin[0] + x_offset, self.origin[1] + y_offset, self.origin[2])
+        )
+        self.xform_api.SetRotate(
+            Gf.Vec3f(self.initial_rotation[0], self.initial_rotation[1], math.degrees(yaw))
+        )
+
+    def _sample_path(self, distance: float) -> tuple[float, float, float]:
+        remaining = distance
+        for index, length in enumerate(self.segment_lengths):
+            start = self.points[index]
+            end = self.points[index + 1]
+            if remaining <= length:
+                ratio = remaining / length if length > 0.0 else 0.0
+                x = start[0] + (end[0] - start[0]) * ratio
+                y = start[1] + (end[1] - start[1]) * ratio
+                yaw = math.atan2(end[1] - start[1], end[0] - start[0])
+                return x, y, yaw
+            remaining -= length
+
+        final = self.points[-1]
+        previous = self.points[-2]
+        yaw = math.atan2(final[1] - previous[1], final[0] - previous[0])
+        return final[0], final[1], yaw
+
+
 world_usd = Path(args.world_usd)
 if not world_usd.is_file():
     raise FileNotFoundError(world_usd)
@@ -302,9 +408,27 @@ create_clock_graph()
 create_tf_graph(tf_target_paths)
 create_sensor_graph()
 
+scripted_motion = None
+if args.enable_scripted_motion:
+    scripted_motion = ScriptedSpotMotion(
+        stage=stage,
+        prim_path=ROBOT_PRIM,
+        speed=args.motion_speed,
+        radius_x=args.motion_radius_x,
+        radius_y=args.motion_radius_y,
+    )
+
 print("Opened stage:", stage.GetRootLayer().identifier)
 print("Robot prim:", ROBOT_PRIM)
 print("No USD saved.")
+if scripted_motion:
+    print("Scripted Spot motion: enabled")
+    print("  mode: runtime-only kinematic root-prim motion")
+    print(f"  speed: {args.motion_speed:.3f} m/s")
+    print(f"  loop half-size: x={args.motion_radius_x:.3f} m, y={args.motion_radius_y:.3f} m")
+    print("  starts only while Isaac Sim playback is running")
+else:
+    print("Scripted Spot motion: disabled")
 print_graph_summary("Clock", CLOCK_GRAPH_PATH, ("OnPlaybackTick", "ReadSimTime", "Context", "PublishClock"))
 print_graph_summary(
     "TF",
@@ -339,6 +463,8 @@ print("  ros2 topic echo /spot/d455/imu --once")
 print("Keeping Isaac Sim open. Close the GUI window to exit.")
 
 while simulation_app.is_running():
+    if scripted_motion:
+        scripted_motion.update()
     simulation_app.update()
 
 simulation_app.close(skip_cleanup=True)

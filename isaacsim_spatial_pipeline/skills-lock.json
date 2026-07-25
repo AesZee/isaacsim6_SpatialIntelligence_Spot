@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "isaac-sim-ros2-bridge": {
+      "source": "isaac-sim/isaacsim",
+      "sourceType": "github",
+      "skillPath": "skills/isaac-sim-ros2-bridge/SKILL.md",
+      "computedHash": "8fc969278054c4459b443712fcac13581bdb05e86114aed19cf0cf4f22a443ce"
+    },
+    "isaac-sim-validator": {
+      "source": "isaac-sim/isaacsim",
+      "sourceType": "github",
+      "skillPath": "skills/isaac-sim-validator/SKILL.md",
+      "computedHash": "4e0d991725a2d92d76a92228ab7c1ef0a9df271c9cd371bdf6106ee5a8c5ac0e"
+    },
+    "spatial-reasoning": {
+      "source": "isaac-sim/isaacsim",
+      "sourceType": "github",
+      "skillPath": "skills/spatial-reasoning/SKILL.md",
+      "computedHash": "bf3cde901cab04ab6d471346804293ba8d21c7efeeb5b36ece6c18b314031c87"
+    }
+  }
+}

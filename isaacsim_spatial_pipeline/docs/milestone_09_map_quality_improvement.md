@@ -140,6 +140,11 @@ launch/m09_map_quality_experiment.launch.py
 The selected profile is applied only to the launched experiment node. The
 existing Milestone #4 and Milestone #7 config files are not overwritten.
 
+Milestone #9 can also use the runtime-only scripted motion option in
+`scripts/10_run_sim.py` so Spot changes LiDAR viewpoints during playback. This
+is kinematic simulation motion of the Spot root prim. It is not physical Spot
+leg locomotion and it is not saved to the USD stage.
+
 ## What Milestone #9 Does Not Change
 
 Milestone #9 does not change Isaac Sim, USD assets, bridge topic names, map
@@ -157,6 +162,24 @@ export ROS_DOMAIN_ID=0
 ```
 
 Then manually press Play.
+
+For the moving Spot experiment, use this Terminal 1 command instead:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+export ROS_DOMAIN_ID=0
+/home/aes/isaacsim/python.sh /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/10_run_sim.py --enable-scripted-motion
+```
+
+Optional scripted-motion tuning:
+
+```bash
+/home/aes/isaacsim/python.sh /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/10_run_sim.py \
+  --enable-scripted-motion \
+  --motion-speed 0.4 \
+  --motion-radius-x 5.0 \
+  --motion-radius-y 3.5
+```
 
 Terminal 2: launch one Milestone #9 experiment:
 
@@ -229,6 +252,11 @@ Wait for /map updates before saving.
 Prefer runs where known_ratio and occupied_ratio improve over the Milestone #8 baseline.
 Keep RViz open to visually inspect whether the map is becoming structurally meaningful.
 ```
+
+If using `--enable-scripted-motion`, the script moves the Spot root prim around
+a rectangular warehouse loop while Play is active. The motion is intended to
+create changing real Isaac LiDAR returns for `slam_toolbox`; it does not create
+fake `/map`, fake `/odom`, or fake `map -> odom`.
 
 ## Tuning Experiment Matrix
 

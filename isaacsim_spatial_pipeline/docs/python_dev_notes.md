@@ -34,6 +34,17 @@ The script:
 
 It does not save the stage.
 
+For SLAM map-quality experiments, the same runtime can move the Spot root prim
+with a simulation-only scripted trajectory:
+
+```bash
+/home/aes/isaacsim/python.sh /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/10_run_sim.py --enable-scripted-motion
+```
+
+This motion is kinematic root-prim motion used to create changing LiDAR
+viewpoints for SLAM. It is not physical Spot leg control, does not save USD
+changes, and starts only while Isaac Sim playback is running.
+
 ## Current Sensor Paths
 
 ```text
