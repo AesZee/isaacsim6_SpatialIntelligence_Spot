@@ -303,7 +303,7 @@ Configurations:
 
 Runtime evidence:
 
-- [Fresh Milestone 14 dry-run manifest](../artifacts/autonomous_runs/run_20260725T165552_207172_d6207e65/manifest.json)
+- [Post-commit Milestone 14 dry-run manifest](../artifacts/autonomous_runs/run_20260725T165637_208141_9d6a40c0/manifest.json)
 - [Milestone 9A live manifest](../artifacts/autonomous_runs/run_20260725T152626_64594_54de0973/manifest.json)
 - [M9 comparison JSON](../artifacts/m09_matrix/summary_20260725T1549/m09_experiments.json)
 - [M9 comparison CSV](../artifacts/m09_matrix/summary_20260725T1549/m09_experiments.csv)
