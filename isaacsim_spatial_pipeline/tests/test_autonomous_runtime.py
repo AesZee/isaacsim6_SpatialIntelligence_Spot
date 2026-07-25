@@ -33,6 +33,10 @@ class AutonomousRuntimeTests(unittest.TestCase):
         invalid["limits"]["max_experiments"] = 0
         with self.assertRaisesRegex(ValueError, "max_experiments"):
             runtime.validate_config(invalid)
+        invalid = json.loads(json.dumps(self.config))
+        invalid["experiments"][0]["initial_pose_offset"] = [1.1, 0.0, 0.0]
+        with self.assertRaisesRegex(ValueError, "initial pose offset"):
+            runtime.validate_config(invalid)
 
     def test_all_declared_trajectories_are_bounded(self) -> None:
         path = Path(self.config["trajectory"]["data_file"])

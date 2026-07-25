@@ -50,6 +50,21 @@ def _launch_setup(context, *_, **__):
     enable_sim_odom = LaunchConfiguration("enable_sim_odom")
     use_lifecycle_manager = LaunchConfiguration("use_lifecycle_manager")
     slam_start_delay = _optional_float(context, "slam_start_delay_sec", 0.0)
+    slam_executable = LaunchConfiguration("slam_executable").perform(context)
+    slam_params_file = LaunchConfiguration("slam_params_file").perform(context)
+    map_file_name = LaunchConfiguration("map_file_name").perform(context).strip()
+    map_start_pose = LaunchConfiguration("map_start_pose").perform(context).strip()
+    slam_overrides = {
+        "use_sim_time": ParameterValue(use_sim_time, value_type=bool),
+        "use_lifecycle_manager": ParameterValue(use_lifecycle_manager, value_type=bool),
+    }
+    if map_file_name:
+        slam_overrides["map_file_name"] = map_file_name
+    if map_start_pose:
+        pose = [float(value) for value in map_start_pose.split(",")]
+        if len(pose) != 3:
+            raise RuntimeError("map_start_pose must contain x,y,yaw")
+        slam_overrides["map_start_pose"] = pose
 
     scan_overrides = {
         "min_height": _optional_float(context, "min_height", float(profile["min_height"])),
@@ -71,15 +86,12 @@ def _launch_setup(context, *_, **__):
 
     slam_toolbox_node = LifecycleNode(
         package="slam_toolbox",
-        executable="async_slam_toolbox_node",
+        executable=slam_executable,
         name="slam_toolbox",
         namespace="",
         parameters=[
-            str(M07_SLAM_CONFIG_PATH),
-            {
-                "use_sim_time": ParameterValue(use_sim_time, value_type=bool),
-                "use_lifecycle_manager": ParameterValue(use_lifecycle_manager, value_type=bool),
-            },
+            slam_params_file,
+            slam_overrides,
         ],
         output="screen",
     )
@@ -211,6 +223,10 @@ def generate_launch_description():
             DeclareLaunchArgument("drop_after_sec", default_value="-1.0"),
             DeclareLaunchArgument("drop_duration_sec", default_value="0.0"),
             DeclareLaunchArgument("slam_start_delay_sec", default_value="0.0"),
+            DeclareLaunchArgument("slam_executable", default_value="async_slam_toolbox_node"),
+            DeclareLaunchArgument("slam_params_file", default_value=str(M07_SLAM_CONFIG_PATH)),
+            DeclareLaunchArgument("map_file_name", default_value=""),
+            DeclareLaunchArgument("map_start_pose", default_value=""),
             LogInfo(
                 msg=(
                     "Milestone #9 map quality experiment. Start Isaac Sim separately, "

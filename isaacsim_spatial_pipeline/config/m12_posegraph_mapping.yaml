@@ -1,0 +1,41 @@
+runtime:
+  isaac_python: /home/aes/isaacsim/python.sh
+  entry_point: /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/10_run_sim.py
+  world_usd: /home/aes/isaac_ws/scenes/Warehouse.usd
+  ros_setup: /opt/ros/jazzy/setup.bash
+  ros_domain_id: 0
+  headless: true
+  require_gpu: true
+artifacts:
+  output_root: /home/aes/isaac_ws/isaacsim_spatial_pipeline/artifacts/m12_mapping
+safety:
+  overwrite_existing_outputs: false
+  source_usd_writes: false
+  package_installation: false
+  sudo: false
+limits:
+  max_experiments: 1
+  total_duration_sec: 600.0
+  startup_timeout_sec: 180.0
+  topic_timeout_sec: 30.0
+  trajectory_timeout_sec: 300.0
+  shutdown_timeout_sec: 15.0
+  watchdog_window_sec: 4.0
+  output_max_mb: 1000.0
+trajectory:
+  data_file: /home/aes/isaac_ws/isaacsim_spatial_pipeline/config/trajectories.json
+  name: warehouse_mapping_loop
+slam:
+  launch_file: /home/aes/isaac_ws/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py
+  profile_config: /home/aes/isaac_ws/isaacsim_spatial_pipeline/config/m09_lidar_slice_profiles.yaml
+evaluation:
+  diagnostic_duration_sec: 8.0
+  map_save_duration_sec: 10.0
+  min_known_ratio: 0.10
+  min_occupied_cells: 500
+  serialize_posegraph: true
+bag:
+  enabled: false
+  topics: [/clock, /tf, /tf_static, /spot/lidar/points, /scan, /odom, /map]
+experiments:
+  - {name: localization_map, profile: wide_diagnostic}

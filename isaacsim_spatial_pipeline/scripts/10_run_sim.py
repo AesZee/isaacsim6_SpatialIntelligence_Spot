@@ -107,6 +107,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--permitted-max-x", type=float)
     parser.add_argument("--permitted-min-y", type=float)
     parser.add_argument("--permitted-max-y", type=float)
+    parser.add_argument("--initial-x-offset", type=float, default=0.0)
+    parser.add_argument("--initial-y-offset", type=float, default=0.0)
+    parser.add_argument("--initial-yaw-offset", type=float, default=0.0)
     return parser.parse_args()
 
 
@@ -337,6 +340,7 @@ class ScriptedSpotMotion:
         max_duration: float,
         single_trajectory: bool,
         permitted_area: tuple[float, float, float, float] | None,
+        initial_pose_offset: tuple[float, float, float],
     ) -> None:
         if speed <= 0.0:
             raise ValueError("--motion-speed must be positive")
@@ -372,8 +376,18 @@ class ScriptedSpotMotion:
         self.last_status = {"state": "ready", "elapsed": 0.0, "x": 0.0, "y": 0.0}
 
         translation, rotation = self._read_initial_pose()
-        self.origin = translation
-        self.initial_rotation = rotation
+        self.origin = Gf.Vec3d(
+            translation[0] + initial_pose_offset[0],
+            translation[1] + initial_pose_offset[1],
+            translation[2],
+        )
+        self.initial_rotation = Gf.Vec3f(
+            rotation[0],
+            rotation[1],
+            rotation[2] + math.degrees(initial_pose_offset[2]),
+        )
+        self.xform_api.SetTranslate(self.origin)
+        self.xform_api.SetRotate(self.initial_rotation)
         for x, y in self.points:
             self._validate_permitted_area(x, y)
 
@@ -534,6 +548,11 @@ if args.enable_scripted_motion:
         max_duration=args.motion_max_duration,
         single_trajectory=args.single_trajectory,
         permitted_area=optional_permitted_area(),
+        initial_pose_offset=(
+            args.initial_x_offset,
+            args.initial_y_offset,
+            args.initial_yaw_offset,
+        ),
     )
 
 motion_start_file = Path(args.motion_start_file) if args.motion_start_file else None

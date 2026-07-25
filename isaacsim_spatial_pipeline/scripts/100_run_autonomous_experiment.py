@@ -7,6 +7,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import os
 import re
 import shlex
@@ -211,6 +212,19 @@ def validate_config(config: dict) -> None:
     names = [nested(experiment, "name") for experiment in experiments]
     if len(set(names)) != len(names):
         raise ValueError("experiment names must be unique")
+    for experiment in experiments:
+        offset = experiment.get("initial_pose_offset", [0.0, 0.0, 0.0])
+        if not isinstance(offset, list) or len(offset) != 3:
+            raise ValueError("experiment initial_pose_offset must be [x, y, yaw]")
+        x, y, yaw = map(float, offset)
+        if abs(x) > 1.0 or abs(y) > 1.0 or abs(yaw) > math.pi:
+            raise ValueError("experiment initial pose offset exceeds the bounded 1 m / pi rad limit")
+        launch_arguments = experiment.get("launch_arguments", {})
+        if not isinstance(launch_arguments, dict) or any(
+            not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", str(key))
+            for key in launch_arguments
+        ):
+            raise ValueError("experiment launch_arguments must use ROS launch argument names")
 
     trajectory = resolve_trajectory(config)
     if float(nested(trajectory, "speed_mps")) <= 0.0:
@@ -353,6 +367,15 @@ class AutonomousHarness:
                 "Map metrics do not prove ground-truth geometric accuracy.",
             ],
         }
+        immutable_inputs = [
+            Path(path).resolve() for path in config["evaluation"].get("immutable_inputs", [])
+        ]
+        if immutable_inputs:
+            if not all(path.is_file() for path in immutable_inputs):
+                raise ValueError("an immutable evaluation input is missing")
+            self.manifest["immutable_inputs"] = {
+                str(path): {"sha256_before": sha256(path)} for path in immutable_inputs
+            }
         (self.run_directory / "effective_config.yaml").write_text(
             yaml.safe_dump(config, sort_keys=False),
             encoding="utf-8",
@@ -487,8 +510,9 @@ class AutonomousHarness:
             self.manifest["result"] = "FAIL"
             self.manifest["failure"] = str(error)
             for experiment in self.manifest["experiments"]:
-                experiment.setdefault("finished_at", utc_now())
-                experiment.setdefault("failure", str(error))
+                if "finished_at" not in experiment:
+                    experiment["finished_at"] = utc_now()
+                    experiment["failure"] = str(error)
             return 1
         finally:
             self.manager.cleanup()
@@ -511,12 +535,22 @@ class AutonomousHarness:
             if not self.manifest["cleanup_confirmed"]:
                 self.manifest["result"] = "FAIL"
                 self.manifest["failure"] = "one or more owned child processes remained after cleanup"
+            for path_text, evidence in self.manifest.get("immutable_inputs", {}).items():
+                path = Path(path_text)
+                evidence["sha256_after"] = sha256(path) if path.is_file() else "missing"
+                evidence["unchanged"] = evidence["sha256_after"] == evidence["sha256_before"]
+                if not evidence["unchanged"]:
+                    self.manifest["result"] = "FAIL"
+                    self.manifest["failure"] = f"immutable input changed: {path}"
             self.manifest["finished_at"] = utc_now()
             self._write_outputs()
 
     def run_experiment(self, index: int, experiment: dict) -> dict:
         name = str(experiment["name"])
         profile = str(experiment["profile"])
+        initial_pose_offset = [
+            float(value) for value in experiment.get("initial_pose_offset", [0, 0, 0])
+        ]
         directory = self.run_directory / f"experiment_{index + 1}_{name}"
         directory.mkdir()
         (directory / "control").mkdir()
@@ -535,6 +569,8 @@ class AutonomousHarness:
             "result": "FAIL",
             "source_usd_unchanged": True,
             "output_within_limit": True,
+            "initial_pose_offset": initial_pose_offset,
+            "launch_arguments": experiment.get("launch_arguments", {}),
         }
         self.manifest["experiments"].append(evidence)
         self._write_outputs()
@@ -570,6 +606,12 @@ class AutonomousHarness:
                 str(trajectory["permitted_area_relative_m"]["min_y"]),
                 "--permitted-max-y",
                 str(trajectory["permitted_area_relative_m"]["max_y"]),
+                "--initial-x-offset",
+                str(initial_pose_offset[0]),
+                "--initial-y-offset",
+                str(initial_pose_offset[1]),
+                "--initial-yaw-offset",
+                str(initial_pose_offset[2]),
                 "--max-runtime-seconds",
                 str(min(float(limits["total_duration_sec"]), 120.0) if self.smoke else limits["total_duration_sec"]),
                 *(["--headless"] if runtime.get("headless", True) else []),
@@ -594,6 +636,10 @@ class AutonomousHarness:
                 "launch",
                 str(self.config["slam"]["launch_file"]),
                 f"profile:={profile}",
+                *[
+                    f"{key}:={value}"
+                    for key, value in experiment.get("launch_arguments", {}).items()
+                ],
             ],
         )
         stack_process = self.manager.start(f"{name}_slam", stack_command)
@@ -611,6 +657,43 @@ class AutonomousHarness:
             raise HarnessFailure("preflight topic or TF validation failed")
 
         previous_clock = self.observe_clock(name, "clock_before_motion", smoke_deadline)
+        localization_duration = float(
+            self.config["evaluation"].get("localization_duration_sec", 0.0)
+        )
+        if localization_duration > 0.0:
+            localization_output = directory / "localization_metrics.json"
+            expected_transform = self.config["evaluation"].get(
+                "localization_expected_transform", [0.0, 0.0, 0.0]
+            )
+            if not isinstance(expected_transform, list) or len(expected_transform) != 3:
+                raise HarnessFailure(
+                    "evaluation.localization_expected_transform must be [x, y, yaw]"
+                )
+            localization_result = self.run_command(
+                f"{name}_localization",
+                ros_command(
+                    ros_setup,
+                    [
+                        sys.executable,
+                        str(REPO_ROOT / "scripts" / "120_measure_localization.py"),
+                        "--duration",
+                        str(localization_duration),
+                        "--output",
+                        str(localization_output),
+                        "--expected-x",
+                        str(expected_transform[0]),
+                        "--expected-y",
+                        str(expected_transform[1]),
+                        "--expected-yaw",
+                        str(expected_transform[2]),
+                    ],
+                ),
+                localization_duration + 5.0,
+                smoke_deadline,
+            )
+            evidence["localization"] = read_json(localization_output)
+            if localization_result.returncode != 0:
+                raise HarnessFailure("localization convergence validation failed")
         if self.config["bag"]["enabled"] and not self.smoke:
             bag_directory = directory / "bag"
             bag_directory.mkdir()
@@ -748,6 +831,38 @@ class AutonomousHarness:
             if evidence["artifact_quality"] == "FAIL"
             else ("PASS" if meets_targets else "WARN")
         )
+        if self.config["evaluation"].get("serialize_posegraph", False):
+            posegraph_directory = directory / "posegraph"
+            posegraph_directory.mkdir()
+            posegraph_prefix = posegraph_directory / "map"
+            serialize_result = self.run_command(
+                f"{name}_serialize_posegraph",
+                ros_command(
+                    ros_setup,
+                    [
+                        "ros2",
+                        "service",
+                        "call",
+                        "/slam_toolbox/serialize_map",
+                        "slam_toolbox/srv/SerializePoseGraph",
+                        f"{{filename: '{posegraph_prefix}'}}",
+                    ],
+                ),
+                30.0,
+                smoke_deadline,
+            )
+            posegraph_files = [
+                posegraph_prefix.with_suffix(suffix) for suffix in (".posegraph", ".data")
+            ]
+            if serialize_result.returncode != 0 or not all(
+                path.is_file() and path.stat().st_size > 0 for path in posegraph_files
+            ):
+                raise HarnessFailure("slam_toolbox posegraph serialization failed")
+            evidence["posegraph"] = {
+                "prefix": str(posegraph_prefix),
+                "files": [str(path) for path in posegraph_files],
+                "sha256": {path.name: sha256(path) for path in posegraph_files},
+            }
         evidence["output_within_limit"] = self.enforce_output_limit()
         self.manager.stop(f"{name}_bag")
         self.manager.stop(f"{name}_slam")
