@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -36,7 +37,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Save map artifacts from a live OccupancyGrid.")
     parser.add_argument("--duration", type=float, default=15.0)
     parser.add_argument("--map-topic", default="/map")
-    parser.add_argument("--output-root", default="/home/aes/isaac_ws/maps")
+    parser.add_argument(
+        "--output-root",
+        default=os.environ.get("OUTPUT_DIR", str(Path(__file__).resolve().parents[2] / "maps")),
+    )
     parser.add_argument("--prefix", default="m08")
     parser.add_argument("--spin-timeout", type=float, default=0.1)
     return parser.parse_args()

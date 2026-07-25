@@ -9,8 +9,7 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 
-REPO_ROOT = Path("/home/aes/isaac_ws")
-PIPELINE_ROOT = REPO_ROOT / "isaacsim_spatial_pipeline"
+PIPELINE_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = PIPELINE_ROOT / "config" / "m06_sim_odometry_bridge.yaml"
 SCRIPT_PATH = PIPELINE_ROOT / "scripts" / "60_sim_odometry_bridge.py"
 

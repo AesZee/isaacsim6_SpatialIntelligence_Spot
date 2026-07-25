@@ -9,19 +9,19 @@ Metrics are occupancy-grid statistics only, not ground-truth geometric accuracy.
 
 ## Inputs
 
-- `/home/aes/isaac_ws/maps/m09_baseline_m08_20260705_120240`
-- `/home/aes/isaac_ws/maps/m09_medium_structure_20260705_120610`
+- `m09_baseline_m08_20260705_120240`
+- `m09_medium_structure_20260705_120610`
 
 ## Comparison
 
 | Rank | Label | Score | Directory | Cells | Resolution | Known Ratio | Unknown Ratio | Occupied Ratio | Occupied Cells | Known m2 | Occupied m2 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | WARN | -1.600 | /home/aes/isaac_ws/maps/m09_medium_structure_20260705_120610 | 283910 | 0.050 | 0.0070 | 0.9930 | 0.000000 | 0 | 4.970 | 0.000 |
-| 2 | WARN | -2.150 | /home/aes/isaac_ws/maps/m09_baseline_m08_20260705_120240 | 235690 | 0.050 | 0.0043 | 0.9957 | 0.000000 | 0 | 2.505 | 0.000 |
+| 1 | WARN | -1.600 | m09_medium_structure_20260705_120610 | 283910 | 0.050 | 0.0070 | 0.9930 | 0.000000 | 0 | 4.970 | 0.000 |
+| 2 | WARN | -2.150 | m09_baseline_m08_20260705_120240 | 235690 | 0.050 | 0.0043 | 0.9957 | 0.000000 | 0 | 2.505 | 0.000 |
 
 ## Best Map By Heuristic
 
-- Directory: `/home/aes/isaac_ws/maps/m09_medium_structure_20260705_120610`
+- Directory: `m09_medium_structure_20260705_120610`
 - Score: `-1.600`
 - Label: `WARN`
 - Known ratio: `0.0070`

@@ -153,12 +153,20 @@ format. It does not save maps automatically.
 
 ## Manual Run Sequence
 
+Set the local installation paths once:
+
+```bash
+export ISAAC_SIM_DIR=/path/to/isaacsim
+export WORKSPACE_DIR=/path/to/isaac_ws
+export OUTPUT_DIR="$WORKSPACE_DIR/maps"
+```
+
 Terminal 1: start live Isaac Sim manually:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=0
-/home/aes/isaacsim/python.sh /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/10_run_sim.py
+"$ISAAC_SIM_DIR/python.sh" "$WORKSPACE_DIR/isaacsim_spatial_pipeline/scripts/10_run_sim.py"
 ```
 
 Then manually press Play.
@@ -168,13 +176,13 @@ For the moving Spot experiment, use this Terminal 1 command instead:
 ```bash
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=0
-/home/aes/isaacsim/python.sh /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/10_run_sim.py --enable-scripted-motion
+"$ISAAC_SIM_DIR/python.sh" "$WORKSPACE_DIR/isaacsim_spatial_pipeline/scripts/10_run_sim.py" --enable-scripted-motion
 ```
 
 Optional scripted-motion tuning:
 
 ```bash
-/home/aes/isaacsim/python.sh /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/10_run_sim.py \
+"$ISAAC_SIM_DIR/python.sh" "$WORKSPACE_DIR/isaacsim_spatial_pipeline/scripts/10_run_sim.py" \
   --enable-scripted-motion \
   --motion-speed 0.4 \
   --motion-radius-x 5.0 \
@@ -186,22 +194,22 @@ Terminal 2: launch one Milestone #9 experiment:
 ```bash
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=0
-ros2 launch /home/aes/isaac_ws/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py profile:=baseline_m08
+ros2 launch "$WORKSPACE_DIR/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py" profile:=baseline_m08
 ```
 
 Alternative profiles:
 
 ```bash
-ros2 launch /home/aes/isaac_ws/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py profile:=narrow_low_noise
-ros2 launch /home/aes/isaac_ws/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py profile:=medium_structure
-ros2 launch /home/aes/isaac_ws/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py profile:=near_structure
-ros2 launch /home/aes/isaac_ws/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py profile:=wide_diagnostic
+ros2 launch "$WORKSPACE_DIR/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py" profile:=narrow_low_noise
+ros2 launch "$WORKSPACE_DIR/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py" profile:=medium_structure
+ros2 launch "$WORKSPACE_DIR/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py" profile:=near_structure
+ros2 launch "$WORKSPACE_DIR/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py" profile:=wide_diagnostic
 ```
 
 Explicit override example:
 
 ```bash
-ros2 launch /home/aes/isaac_ws/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py profile:=baseline_m08 range_max:=12.0
+ros2 launch "$WORKSPACE_DIR/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py" profile:=baseline_m08 range_max:=12.0
 ```
 
 Terminal 3: inspect live SLAM map:
@@ -209,7 +217,7 @@ Terminal 3: inspect live SLAM map:
 ```bash
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=0
-python3 /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/80_inspect_slam_map.py --duration 30.0
+python3 "$WORKSPACE_DIR/isaacsim_spatial_pipeline/scripts/80_inspect_slam_map.py" --duration 30.0
 ```
 
 Terminal 4: save map artifacts manually after the map improves:
@@ -217,28 +225,28 @@ Terminal 4: save map artifacts manually after the map improves:
 ```bash
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=0
-python3 /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/81_save_map_artifacts.py --duration 15.0 --prefix m09
+python3 "$WORKSPACE_DIR/isaacsim_spatial_pipeline/scripts/81_save_map_artifacts.py" --duration 15.0 --prefix m09
 ```
 
 Terminal 5: validate and evaluate saved artifact:
 
 ```bash
-python3 /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/82_validate_saved_map_artifacts.py /home/aes/isaac_ws/maps/<map_dir>
-python3 /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/83_evaluate_map_quality.py /home/aes/isaac_ws/maps/<map_dir>
+python3 "$WORKSPACE_DIR/isaacsim_spatial_pipeline/scripts/82_validate_saved_map_artifacts.py" "$OUTPUT_DIR/<map_dir>"
+python3 "$WORKSPACE_DIR/isaacsim_spatial_pipeline/scripts/83_evaluate_map_quality.py" "$OUTPUT_DIR/<map_dir>"
 ```
 
 Terminal 6: compare multiple saved maps:
 
 ```bash
-python3 /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/90_compare_map_quality.py /home/aes/isaac_ws/maps/m09_*
+python3 "$WORKSPACE_DIR/isaacsim_spatial_pipeline/scripts/90_compare_map_quality.py" "$OUTPUT_DIR"/m09_*
 ```
 
 Terminal 7: write report:
 
 ```bash
-python3 /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/91_write_map_quality_report.py \
-  --output /home/aes/isaac_ws/isaacsim_spatial_pipeline/docs/m09_map_quality_report.md \
-  /home/aes/isaac_ws/maps/m09_*
+python3 "$WORKSPACE_DIR/isaacsim_spatial_pipeline/scripts/91_write_map_quality_report.py" \
+  --output "$WORKSPACE_DIR/isaacsim_spatial_pipeline/docs/m09_map_quality_report.md" \
+  "$OUTPUT_DIR"/m09_*
 ```
 
 ## Suggested Isaac Sim Driving Strategy
@@ -275,7 +283,7 @@ Run one profile at a time. Stop the previous launch before starting the next.
 Use the save script with `--prefix m09`:
 
 ```text
-/home/aes/isaac_ws/maps/m09_<timestamp>/
+$OUTPUT_DIR/m09_<timestamp>/
 ```
 
 Record the selected LiDAR profile and trajectory notes in the generated report
@@ -305,7 +313,7 @@ does not prove geometric correctness.
 Open:
 
 ```bash
-rviz2 -d /home/aes/isaac_ws/isaacsim_spatial_pipeline/rviz/m09_map_quality_improvement.rviz
+rviz2 -d "$WORKSPACE_DIR/isaacsim_spatial_pipeline/rviz/m09_map_quality_improvement.rviz"
 ```
 
 Use `Fixed Frame: map`. Do not change the fixed frame to hide missing map or TF
@@ -388,14 +396,14 @@ After that correction, `/scan` remained in `os1_frame` for valid experiments.
 Saved map directories:
 
 ```text
-/home/aes/isaac_ws/maps/m09_baseline_m08_20260705_120240
-/home/aes/isaac_ws/maps/m09_medium_structure_20260705_120610
+$OUTPUT_DIR/m09_baseline_m08_20260705_120240
+$OUTPUT_DIR/m09_medium_structure_20260705_120610
 ```
 
 Generated report:
 
 ```text
-/home/aes/isaac_ws/isaacsim_spatial_pipeline/docs/m09_map_quality_report.md
+$WORKSPACE_DIR/isaacsim_spatial_pipeline/docs/m09_map_quality_report.md
 ```
 
 ### Comparison Result

@@ -15,8 +15,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 from lifecycle_msgs.msg import Transition
 
 
-REPO_ROOT = Path("/home/aes/isaac_ws")
-PIPELINE_ROOT = REPO_ROOT / "isaacsim_spatial_pipeline"
+PIPELINE_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_ROOT = PIPELINE_ROOT / "config"
 LAUNCH_ROOT = PIPELINE_ROOT / "launch"
 M04_SCAN_CONFIG_PATH = CONFIG_ROOT / "m04_pointcloud_to_laserscan.yaml"

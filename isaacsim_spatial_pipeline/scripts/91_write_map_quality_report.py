@@ -54,7 +54,7 @@ def markdown_table(metrics) -> str:
             str(index),
             metric.label,
             f"{metric.score:.3f}",
-            str(metric.directory),
+            metric.directory.name,
             str(metric.total_cells),
             f"{metric.resolution:.3f}",
             f"{metric.known_ratio:.4f}",
@@ -85,7 +85,7 @@ def build_report(metrics, inputs: list[str]) -> str:
         "",
     ]
     for item in inputs:
-        lines.append(f"- `{item}`")
+        lines.append(f"- `{Path(item).name}`")
     lines.extend(["", "## Comparison", ""])
     if metrics:
         lines.append(markdown_table(metrics))
@@ -94,7 +94,7 @@ def build_report(metrics, inputs: list[str]) -> str:
                 "",
                 "## Best Map By Heuristic",
                 "",
-                f"- Directory: `{best.directory}`",
+                f"- Directory: `{best.directory.name}`",
                 f"- Score: `{best.score:.3f}`",
                 f"- Label: `{best.label}`",
                 f"- Known ratio: `{best.known_ratio:.4f}`",

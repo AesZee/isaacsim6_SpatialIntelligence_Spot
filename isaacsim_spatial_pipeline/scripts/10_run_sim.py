@@ -1,7 +1,7 @@
 """Open the warehouse Spot scene with in-memory ROS2 sensor graphs.
 
 Run with:
-    /home/aes/isaacsim/python.sh isaacsim_spatial_pipeline/scripts/10_run_sim.py
+    $ISAAC_SIM_DIR/python.sh $WORKSPACE_DIR/isaacsim_spatial_pipeline/scripts/10_run_sim.py
 
 The script does not save USD changes. It opens the warehouse scene, validates
 the existing Spot sensor prims, creates ROS2 clock/TF/sensor publisher
@@ -16,7 +16,7 @@ from pathlib import Path
 from isaacsim import SimulationApp
 
 
-REPO_ROOT = Path("/home/aes/isaac_ws")
+REPO_ROOT = Path(os.environ.get("WORKSPACE_DIR", Path(__file__).resolve().parents[2]))
 DEFAULT_WORLD_USD = REPO_ROOT / "scenes" / "Warehouse.usd"
 
 CLOCK_GRAPH_PATH = "/World/ROS2/Clock"
@@ -90,7 +90,7 @@ def parse_args() -> argparse.Namespace:
 
 
 args = parse_args()
-simulation_app = SimulationApp({"headless": False})
+simulation_app = SimulationApp({"headless": False, "width": 1280, "height": 720})
 
 import omni.graph.core as og
 import omni.timeline
