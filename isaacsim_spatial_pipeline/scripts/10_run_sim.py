@@ -9,8 +9,11 @@ graphs, and keeps Isaac Sim open until the GUI is closed manually.
 """
 
 import argparse
+import json
 import math
 import os
+import signal
+import time
 from pathlib import Path
 
 from isaacsim import SimulationApp
@@ -63,6 +66,14 @@ SENSOR_PRIMS = (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--world-usd", default=str(DEFAULT_WORLD_USD))
+    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--auto-play", action="store_true")
+    parser.add_argument(
+        "--max-runtime-seconds",
+        type=float,
+        default=0.0,
+        help="Stop Isaac Sim after this wall-clock duration; zero keeps the existing unbounded behavior.",
+    )
     parser.add_argument(
         "--enable-scripted-motion",
         action="store_true",
@@ -86,11 +97,21 @@ def parse_args() -> argparse.Namespace:
         default=4.0,
         help="Half-height of the scripted warehouse loop in meters.",
     )
+    parser.add_argument("--trajectory-file")
+    parser.add_argument("--trajectory-name")
+    parser.add_argument("--motion-max-duration", type=float, default=0.0)
+    parser.add_argument("--motion-start-file")
+    parser.add_argument("--motion-status-file")
+    parser.add_argument("--single-trajectory", action="store_true")
+    parser.add_argument("--permitted-min-x", type=float)
+    parser.add_argument("--permitted-max-x", type=float)
+    parser.add_argument("--permitted-min-y", type=float)
+    parser.add_argument("--permitted-max-y", type=float)
     return parser.parse_args()
 
 
 args = parse_args()
-simulation_app = SimulationApp({"headless": False, "width": 1280, "height": 720})
+simulation_app = SimulationApp({"headless": args.headless, "width": 1280, "height": 720})
 
 import omni.graph.core as og
 import omni.timeline
@@ -305,7 +326,18 @@ def print_graph_summary(label: str, graph_path: str, node_names: tuple[str, ...]
 class ScriptedSpotMotion:
     """Runtime-only kinematic motion for SLAM coverage experiments."""
 
-    def __init__(self, stage, prim_path: str, speed: float, radius_x: float, radius_y: float) -> None:
+    def __init__(
+        self,
+        stage,
+        prim_path: str,
+        speed: float,
+        radius_x: float,
+        radius_y: float,
+        points: tuple[tuple[float, float], ...] | None,
+        max_duration: float,
+        single_trajectory: bool,
+        permitted_area: tuple[float, float, float, float] | None,
+    ) -> None:
         if speed <= 0.0:
             raise ValueError("--motion-speed must be positive")
         if radius_x <= 0.0 or radius_y <= 0.0:
@@ -318,7 +350,10 @@ class ScriptedSpotMotion:
         self.xform_api = UsdGeom.XformCommonAPI(self.prim)
         self.timeline = omni.timeline.get_timeline_interface()
         self.speed = speed
-        self.points = (
+        self.max_duration = max_duration
+        self.single_trajectory = single_trajectory
+        self.permitted_area = permitted_area
+        self.points = points or (
             (0.0, 0.0),
             (radius_x, 0.0),
             (radius_x, radius_y),
@@ -333,10 +368,14 @@ class ScriptedSpotMotion:
         ]
         self.loop_length = sum(self.segment_lengths)
         self.start_time = None
+        self.complete = False
+        self.last_status = {"state": "ready", "elapsed": 0.0, "x": 0.0, "y": 0.0}
 
         translation, rotation = self._read_initial_pose()
         self.origin = translation
         self.initial_rotation = rotation
+        for x, y in self.points:
+            self._validate_permitted_area(x, y)
 
     def _read_initial_pose(self) -> tuple[Gf.Vec3d, Gf.Vec3f]:
         try:
@@ -346,23 +385,56 @@ class ScriptedSpotMotion:
             transform = UsdGeom.Xformable(self.prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
             return Gf.Vec3d(transform.ExtractTranslation()), Gf.Vec3f(0.0, 0.0, 0.0)
 
-    def update(self) -> None:
+    def _validate_permitted_area(self, x: float, y: float) -> None:
+        if self.permitted_area is None:
+            return
+        min_x, max_x, min_y, max_y = self.permitted_area
+        if not min_x <= x <= max_x or not min_y <= y <= max_y:
+            raise RuntimeError(
+                f"Scripted motion left permitted relative area: x={x:.3f}, y={y:.3f}, "
+                f"bounds=({min_x:.3f}, {max_x:.3f}, {min_y:.3f}, {max_y:.3f})"
+            )
+
+    def update(self) -> dict:
+        if self.complete:
+            return self.last_status
         if not self.timeline.is_playing():
             self.start_time = None
-            return
+            return {"state": "waiting_for_timeline", "elapsed": 0.0, "x": 0.0, "y": 0.0}
 
         now = self.timeline.get_current_time()
         if self.start_time is None:
             self.start_time = now
 
-        distance = ((now - self.start_time) * self.speed) % self.loop_length
+        elapsed = max(0.0, now - self.start_time)
+        distance = elapsed * self.speed
+        reason = None
+        if self.max_duration > 0.0 and elapsed >= self.max_duration:
+            reason = "max_duration"
+        if self.single_trajectory and distance >= self.loop_length:
+            reason = "trajectory_complete"
+        if reason:
+            distance = min(distance, self.loop_length)
+            self.complete = True
+        elif not self.single_trajectory:
+            distance %= self.loop_length
+
         x_offset, y_offset, yaw = self._sample_path(distance)
+        self._validate_permitted_area(x_offset, y_offset)
         self.xform_api.SetTranslate(
             Gf.Vec3d(self.origin[0] + x_offset, self.origin[1] + y_offset, self.origin[2])
         )
         self.xform_api.SetRotate(
             Gf.Vec3f(self.initial_rotation[0], self.initial_rotation[1], math.degrees(yaw))
         )
+        self.last_status = {
+            "state": "complete" if self.complete else "running",
+            "reason": reason,
+            "elapsed": elapsed,
+            "x": x_offset,
+            "y": y_offset,
+        }
+        return self.last_status
 
     def _sample_path(self, distance: float) -> tuple[float, float, float]:
         remaining = distance
@@ -381,6 +453,48 @@ class ScriptedSpotMotion:
         previous = self.points[-2]
         yaw = math.atan2(final[1] - previous[1], final[0] - previous[0])
         return final[0], final[1], yaw
+
+
+def optional_permitted_area() -> tuple[float, float, float, float] | None:
+    values = (
+        args.permitted_min_x,
+        args.permitted_max_x,
+        args.permitted_min_y,
+        args.permitted_max_y,
+    )
+    if all(value is None for value in values):
+        return None
+    if any(value is None for value in values):
+        raise ValueError("All four permitted-area bounds must be provided together")
+    min_x, max_x, min_y, max_y = values
+    if min_x >= max_x or min_y >= max_y:
+        raise ValueError("Permitted-area minimums must be less than maximums")
+    return min_x, max_x, min_y, max_y
+
+
+def write_motion_status(path: Path | None, payload: dict) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def load_trajectory() -> tuple[tuple[float, float], ...] | None:
+    if not args.trajectory_file and not args.trajectory_name:
+        return None
+    if not args.trajectory_file or not args.trajectory_name:
+        raise ValueError("--trajectory-file and --trajectory-name must be provided together")
+    payload = json.loads(Path(args.trajectory_file).read_text(encoding="utf-8"))
+    try:
+        raw_points = payload["trajectories"][args.trajectory_name]["waypoints_m"]
+        points = tuple(tuple(float(value) for value in point) for point in raw_points)
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"Invalid trajectory '{args.trajectory_name}' in {args.trajectory_file}") from error
+    if len(points) < 2 or any(len(point) != 2 for point in points):
+        raise ValueError("Trajectory requires at least two [x, y] waypoints")
+    return points
 
 
 world_usd = Path(args.world_usd)
@@ -416,7 +530,25 @@ if args.enable_scripted_motion:
         speed=args.motion_speed,
         radius_x=args.motion_radius_x,
         radius_y=args.motion_radius_y,
+        points=load_trajectory(),
+        max_duration=args.motion_max_duration,
+        single_trajectory=args.single_trajectory,
+        permitted_area=optional_permitted_area(),
     )
+
+motion_start_file = Path(args.motion_start_file) if args.motion_start_file else None
+motion_status_file = Path(args.motion_status_file) if args.motion_status_file else None
+stop_requested = False
+
+
+def request_stop(signum, _frame) -> None:
+    global stop_requested
+    print(f"Received signal {signum}; stopping Isaac Sim.")
+    stop_requested = True
+
+
+signal.signal(signal.SIGINT, request_stop)
+signal.signal(signal.SIGTERM, request_stop)
 
 print("Opened stage:", stage.GetRootLayer().identifier)
 print("Robot prim:", ROBOT_PRIM)
@@ -426,7 +558,10 @@ if scripted_motion:
     print("  mode: runtime-only kinematic root-prim motion")
     print(f"  speed: {args.motion_speed:.3f} m/s")
     print(f"  loop half-size: x={args.motion_radius_x:.3f} m, y={args.motion_radius_y:.3f} m")
-    print("  starts only while Isaac Sim playback is running")
+    print(f"  maximum duration: {args.motion_max_duration:.3f} s")
+    print(f"  single trajectory: {args.single_trajectory}")
+    print(f"  permitted relative area: {optional_permitted_area()}")
+    print(f"  start gate: {motion_start_file if motion_start_file else '<timeline playback>'}")
 else:
     print("Scripted Spot motion: disabled")
 print_graph_summary("Clock", CLOCK_GRAPH_PATH, ("OnPlaybackTick", "ReadSimTime", "Context", "PublishClock"))
@@ -454,17 +589,62 @@ print_graph_summary(
     ),
 )
 
-print("Topics to check after pressing Play in Isaac Sim:")
+print("Topics to check while Isaac Sim is playing:")
 print("  ros2 topic list -t")
 print("  ros2 topic echo /clock --once")
 print("  ros2 topic echo /tf --once")
 print("  ros2 topic echo /spot/lidar/points --once")
 print("  ros2 topic echo /spot/d455/imu --once")
-print("Keeping Isaac Sim open. Close the GUI window to exit.")
+if args.auto_play:
+    omni.timeline.get_timeline_interface().play()
+    print("Simulation timeline started programmatically.")
+else:
+    print("Start the simulation timeline manually.")
 
-while simulation_app.is_running():
-    if scripted_motion:
-        scripted_motion.update()
-    simulation_app.update()
+write_motion_status(
+    motion_status_file,
+    {
+        "state": "ready",
+        "motion_enabled": scripted_motion is not None,
+        "world_usd": str(world_usd),
+    },
+)
 
-simulation_app.close(skip_cleanup=True)
+runtime_started = time.monotonic()
+motion_started = False
+last_status_write = 0.0
+last_motion_state = None
+try:
+    while simulation_app.is_running() and not stop_requested:
+        if args.max_runtime_seconds > 0.0 and time.monotonic() - runtime_started >= args.max_runtime_seconds:
+            print("Maximum Isaac Sim runtime reached.")
+            break
+
+        if scripted_motion:
+            start_allowed = motion_start_file is None or motion_start_file.exists()
+            if start_allowed:
+                motion_started = True
+                motion_state = scripted_motion.update()
+                now = time.monotonic()
+                if now - last_status_write >= 0.5 or motion_state["state"] != last_motion_state:
+                    write_motion_status(motion_status_file, motion_state)
+                    last_status_write = now
+                    last_motion_state = motion_state["state"]
+            elif time.monotonic() - last_status_write >= 1.0:
+                write_motion_status(motion_status_file, {"state": "armed"})
+                last_status_write = time.monotonic()
+
+        simulation_app.update()
+finally:
+    timeline = omni.timeline.get_timeline_interface()
+    if timeline.is_playing():
+        timeline.stop()
+    write_motion_status(
+        motion_status_file,
+        {
+            "state": "shutdown",
+            "motion_started": motion_started,
+            "motion_complete": bool(scripted_motion and scripted_motion.complete),
+        },
+    )
+    simulation_app.close(skip_cleanup=True)

@@ -1,0 +1,25 @@
+{
+  "trajectories": {
+    "short_smoke": {
+      "description": "Initial bounded motion and cleanup check.",
+      "speed_mps": 0.3,
+      "max_duration_sec": 20.0,
+      "permitted_area_relative_m": {"min_x": -0.75, "max_x": 0.75, "min_y": -0.5, "max_y": 0.5},
+      "waypoints_m": [[0.0, 0.0], [0.5, 0.0], [0.5, 0.25], [-0.5, 0.25], [0.0, 0.0]]
+    },
+    "warehouse_mapping_loop": {
+      "description": "Bounded rectangular loop with four structure-facing turns.",
+      "speed_mps": 0.3,
+      "max_duration_sec": 90.0,
+      "permitted_area_relative_m": {"min_x": -1.75, "max_x": 1.75, "min_y": -1.25, "max_y": 1.25},
+      "waypoints_m": [[0.0, 0.0], [1.5, 0.0], [1.5, 1.0], [-1.5, 1.0], [-1.5, -1.0], [1.5, -1.0], [1.5, 0.0], [0.0, 0.0]]
+    },
+    "repeatability_near_structure": {
+      "description": "Compact repeated-turn route for identical-input variance checks.",
+      "speed_mps": 0.25,
+      "max_duration_sec": 60.0,
+      "permitted_area_relative_m": {"min_x": -1.25, "max_x": 1.25, "min_y": -0.75, "max_y": 0.75},
+      "waypoints_m": [[0.0, 0.0], [1.0, 0.0], [1.0, 0.5], [0.0, 0.5], [-1.0, 0.5], [-1.0, -0.5], [0.0, -0.5], [1.0, -0.5], [0.0, 0.0]]
+    }
+  }
+}

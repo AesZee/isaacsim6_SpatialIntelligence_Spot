@@ -8,6 +8,7 @@ does not publish odometry, map, or TF.
 from __future__ import annotations
 
 import argparse
+import math
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -42,6 +43,7 @@ class ValidationState:
     lidar_frame_ids: set[str] = field(default_factory=set)
     scan_seen: bool = False
     scan_frame_ids: set[str] = field(default_factory=set)
+    scan_finite_ranges: int = 0
     odom_messages: int = 0
     odom_frame_ids: set[str] = field(default_factory=set)
     odom_child_frame_ids: set[str] = field(default_factory=set)
@@ -109,6 +111,7 @@ class LidarSlamWithSimOdomValidator(Node):
 
     def _on_scan(self, message: LaserScan) -> None:
         self.state.scan_seen = True
+        self.state.scan_finite_ranges += sum(math.isfinite(value) for value in message.ranges)
         if message.header.frame_id:
             self.state.scan_frame_ids.add(message.header.frame_id)
 
@@ -154,6 +157,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--map-frame", default="map")
     parser.add_argument("--scan-frame", default="os1_frame")
     parser.add_argument("--lidar-frame", default="sensor")
+    parser.add_argument("--exit-when-ready", action="store_true")
     return parser.parse_args()
 
 
@@ -234,13 +238,17 @@ def check_runtime_state(state: ValidationState, args: argparse.Namespace) -> lis
         CheckResult(Level.PASS if state.tf_static_messages_seen else Level.FAIL, "/tf_static", f"received {state.tf_static_messages_seen} messages" if state.tf_static_messages_seen else "no static TF messages received"),
     ]
 
-    if state.lidar_seen:
+    if state.lidar_seen and state.lidar_frame_ids == {args.lidar_frame}:
         results.append(CheckResult(Level.PASS, "/spot/lidar/points", f"messages received with frame IDs {sorted(state.lidar_frame_ids)}"))
+    elif state.lidar_seen:
+        results.append(CheckResult(Level.FAIL, "/spot/lidar/points", f"expected frame_id {args.lidar_frame}, observed {sorted(state.lidar_frame_ids)}"))
     else:
         results.append(CheckResult(Level.FAIL, "/spot/lidar/points", "no PointCloud2 messages received"))
 
-    if state.scan_seen and state.scan_frame_ids == {args.scan_frame}:
-        results.append(CheckResult(Level.PASS, "/scan", f"messages received with frame_id {args.scan_frame}"))
+    if state.scan_seen and state.scan_frame_ids == {args.scan_frame} and state.scan_finite_ranges:
+        results.append(CheckResult(Level.PASS, "/scan", f"messages received with frame_id {args.scan_frame} and {state.scan_finite_ranges} finite returns"))
+    elif state.scan_seen and state.scan_frame_ids == {args.scan_frame}:
+        results.append(CheckResult(Level.FAIL, "/scan", "messages received but no finite ranges were observed"))
     elif state.scan_seen:
         results.append(CheckResult(Level.FAIL, "/scan", f"expected frame_id {args.scan_frame}, observed {sorted(state.scan_frame_ids)}"))
     else:
@@ -355,6 +363,24 @@ def check_slam_publishers(node: Node, args: argparse.Namespace) -> list[CheckRes
     return results
 
 
+def ready_for_motion(node: LidarSlamWithSimOdomValidator, args: argparse.Namespace) -> bool:
+    state = node.state
+    return (
+        state.clock_seen
+        and state.tf_messages_seen > 0
+        and state.tf_static_messages_seen > 0
+        and state.lidar_frame_ids == {args.lidar_frame}
+        and state.scan_frame_ids == {args.scan_frame}
+        and state.scan_finite_ranges > 0
+        and state.odom_frame_ids == {args.odom_frame}
+        and state.odom_child_frame_ids == {args.base_frame}
+        and edge_exists(state.static_edges, "body", args.base_frame)
+        and edge_exists(state.static_edges, "sensor", args.scan_frame)
+        and graph_has_chain(state.edges, args.odom_frame, args.base_frame)
+        and "slam_toolbox" in node.get_node_names()
+    )
+
+
 def print_section(title: str, results: Iterable[CheckResult]) -> Level:
     print(f"\n{title}")
     worst = Level.PASS
@@ -373,7 +399,7 @@ def main() -> int:
     try:
         while rclpy.ok():
             elapsed = (node.get_clock().now() - start_time).nanoseconds / 1_000_000_000
-            if elapsed >= args.duration:
+            if elapsed >= args.duration or (args.exit_when_ready and ready_for_motion(node, args)):
                 break
             rclpy.spin_once(node, timeout_sec=args.spin_timeout)
 

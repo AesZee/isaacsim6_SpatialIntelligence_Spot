@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, EmitEvent, IncludeLaunchDescription, LogInfo, OpaqueFunction, RegisterEventHandler
+from launch.actions import DeclareLaunchArgument, EmitEvent, IncludeLaunchDescription, LogInfo, OpaqueFunction, RegisterEventHandler, TimerAction
 from launch.events import matches_action
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -38,19 +38,36 @@ def _load_profile(profile_name: str) -> dict[str, float]:
     return profiles[profile_name]
 
 
+def _load_scan_defaults() -> dict:
+    with M04_SCAN_CONFIG_PATH.open("r", encoding="utf-8") as config_file:
+        return yaml.safe_load(config_file)["m04_pointcloud_to_laserscan"]["ros__parameters"]
+
+
 def _launch_setup(context, *_, **__):
     profile_name = LaunchConfiguration("profile").perform(context)
     profile = _load_profile(profile_name)
     use_sim_time = LaunchConfiguration("use_sim_time")
     enable_sim_odom = LaunchConfiguration("enable_sim_odom")
     use_lifecycle_manager = LaunchConfiguration("use_lifecycle_manager")
+    slam_start_delay = _optional_float(context, "slam_start_delay_sec", 0.0)
 
     scan_overrides = {
         "min_height": _optional_float(context, "min_height", float(profile["min_height"])),
         "max_height": _optional_float(context, "max_height", float(profile["max_height"])),
         "range_min": _optional_float(context, "range_min", float(profile["range_min"])),
         "range_max": _optional_float(context, "range_max", float(profile["range_max"])),
+        "angle_min": _optional_float(context, "angle_min", float(profile["angle_min"])),
+        "angle_max": _optional_float(context, "angle_max", float(profile["angle_max"])),
     }
+    if scan_overrides["min_height"] >= scan_overrides["max_height"]:
+        raise RuntimeError("min_height must be less than max_height")
+    if scan_overrides["range_min"] < 0.0 or scan_overrides["range_min"] >= scan_overrides["range_max"]:
+        raise RuntimeError("range_min must be non-negative and less than range_max")
+    if scan_overrides["angle_min"] >= scan_overrides["angle_max"]:
+        raise RuntimeError("angle_min must be less than angle_max")
+    scan_parameters = {**_load_scan_defaults(), **scan_overrides}
+    scan_parameters["target_frame"] = "os1_frame"
+    scan_parameters["use_sim_time"] = ParameterValue(use_sim_time, value_type=bool)
 
     slam_toolbox_node = LifecycleNode(
         package="slam_toolbox",
@@ -74,7 +91,9 @@ def _launch_setup(context, *_, **__):
                 f"min_height={scan_overrides['min_height']}, "
                 f"max_height={scan_overrides['max_height']}, "
                 f"range_min={scan_overrides['range_min']}, "
-                f"range_max={scan_overrides['range_max']}"
+                f"range_max={scan_overrides['range_max']}, "
+                f"angle_min={scan_overrides['angle_min']}, "
+                f"angle_max={scan_overrides['angle_max']}"
             )
         ),
         IncludeLaunchDescription(
@@ -113,21 +132,7 @@ def _launch_setup(context, *_, **__):
             package="pointcloud_to_laserscan",
             executable="pointcloud_to_laserscan_node",
             name="m09_pointcloud_to_laserscan",
-            parameters=[
-                {
-                    "use_sim_time": ParameterValue(use_sim_time, value_type=bool),
-                    "target_frame": "os1_frame",
-                    "transform_tolerance": 0.1,
-                    "angle_min": -3.14159,
-                    "angle_max": 3.14159,
-                    "angle_increment": 0.0087,
-                    "scan_time": 0.3333,
-                    "use_inf": True,
-                    "inf_epsilon": 1.0,
-                    "queue_size": 10,
-                    **scan_overrides,
-                },
-            ],
+            parameters=[scan_parameters],
             remappings=[
                 ("cloud_in", "/spot/lidar/points"),
                 ("scan", "/scan_raw"),
@@ -143,6 +148,9 @@ def _launch_setup(context, *_, **__):
                     "use_sim_time": ParameterValue(use_sim_time, value_type=bool),
                     "input_topic": "/scan_raw",
                     "output_topic": "/scan",
+                    "publish_every_n": ParameterValue(LaunchConfiguration("publish_every_n"), value_type=int),
+                    "drop_after_sec": ParameterValue(LaunchConfiguration("drop_after_sec"), value_type=float),
+                    "drop_duration_sec": ParameterValue(LaunchConfiguration("drop_duration_sec"), value_type=float),
                 },
             ],
         ),
@@ -155,28 +163,33 @@ def _launch_setup(context, *_, **__):
                 "use_sim_time": use_sim_time,
             }.items(),
         ),
-        slam_toolbox_node,
-        EmitEvent(
-            event=ChangeState(
-                lifecycle_node_matcher=matches_action(slam_toolbox_node),
-                transition_id=Transition.TRANSITION_CONFIGURE,
-            ),
-        ),
-        RegisterEventHandler(
-            OnStateTransition(
-                target_lifecycle_node=slam_toolbox_node,
-                start_state="configuring",
-                goal_state="inactive",
-                entities=[
-                    LogInfo(msg="[LifecycleLaunch] slam_toolbox node is activating."),
-                    EmitEvent(
-                        event=ChangeState(
-                            lifecycle_node_matcher=matches_action(slam_toolbox_node),
-                            transition_id=Transition.TRANSITION_ACTIVATE,
-                        )
+        TimerAction(
+            period=slam_start_delay,
+            actions=[
+                slam_toolbox_node,
+                EmitEvent(
+                    event=ChangeState(
+                        lifecycle_node_matcher=matches_action(slam_toolbox_node),
+                        transition_id=Transition.TRANSITION_CONFIGURE,
                     ),
-                ],
-            )
+                ),
+                RegisterEventHandler(
+                    OnStateTransition(
+                        target_lifecycle_node=slam_toolbox_node,
+                        start_state="configuring",
+                        goal_state="inactive",
+                        entities=[
+                            LogInfo(msg="[LifecycleLaunch] slam_toolbox node is activating."),
+                            EmitEvent(
+                                event=ChangeState(
+                                    lifecycle_node_matcher=matches_action(slam_toolbox_node),
+                                    transition_id=Transition.TRANSITION_ACTIVATE,
+                                )
+                            ),
+                        ],
+                    )
+                ),
+            ],
         ),
     ]
 
@@ -189,9 +202,15 @@ def generate_launch_description():
             DeclareLaunchArgument("max_height", default_value=""),
             DeclareLaunchArgument("range_min", default_value=""),
             DeclareLaunchArgument("range_max", default_value=""),
+            DeclareLaunchArgument("angle_min", default_value=""),
+            DeclareLaunchArgument("angle_max", default_value=""),
             DeclareLaunchArgument("use_sim_time", default_value="true"),
             DeclareLaunchArgument("enable_sim_odom", default_value="true"),
             DeclareLaunchArgument("use_lifecycle_manager", default_value="false"),
+            DeclareLaunchArgument("publish_every_n", default_value="1"),
+            DeclareLaunchArgument("drop_after_sec", default_value="-1.0"),
+            DeclareLaunchArgument("drop_duration_sec", default_value="0.0"),
+            DeclareLaunchArgument("slam_start_delay_sec", default_value="0.0"),
             LogInfo(
                 msg=(
                     "Milestone #9 map quality experiment. Start Isaac Sim separately, "
