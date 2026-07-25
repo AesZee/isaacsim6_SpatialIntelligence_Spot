@@ -1,4 +1,6 @@
 import json
+import importlib.util
+import sys
 import unittest
 from pathlib import Path
 
@@ -6,6 +8,12 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
+ROBUSTNESS_SPEC = importlib.util.spec_from_file_location(
+    "robustness", ROOT / "scripts/130_summarize_robustness.py"
+)
+robustness = importlib.util.module_from_spec(ROBUSTNESS_SPEC)
+sys.modules[ROBUSTNESS_SPEC.name] = robustness
+ROBUSTNESS_SPEC.loader.exec_module(robustness)
 
 
 class ContractRegressionTests(unittest.TestCase):
@@ -39,6 +47,19 @@ class ContractRegressionTests(unittest.TestCase):
         dropout = scenarios["controlled_scan_dropout"]["launch_arguments"]
         self.assertGreater(dropout["drop_after_sec"], 0)
         self.assertGreater(dropout["drop_duration_sec"], 0)
+
+    def test_detected_robustness_failure_requires_cleanup(self) -> None:
+        row = {
+            "expected": "DETECTED",
+            "actual": "FAIL",
+            "motion_complete": False,
+            "final_validation": None,
+            "failure": "required topic or TF failed during trajectory",
+            "cleanup_confirmed": True,
+        }
+        self.assertTrue(robustness.expectation_met(row))
+        row["cleanup_confirmed"] = False
+        self.assertFalse(robustness.expectation_met(row))
 
 
 if __name__ == "__main__":

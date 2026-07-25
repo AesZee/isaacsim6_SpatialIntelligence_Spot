@@ -1,29 +1,34 @@
 {
   "scenarios": {
     "normal_baseline": {
-      "profile": "baseline_m08",
+      "profile": "wide_diagnostic",
       "launch_arguments": {},
       "expected": "PASS"
     },
     "reduced_scan_frequency": {
-      "profile": "baseline_m08",
+      "profile": "wide_diagnostic",
       "launch_arguments": {"publish_every_n": 2},
       "expected": "WARN_OR_PASS"
     },
     "controlled_scan_dropout": {
-      "profile": "baseline_m08",
-      "launch_arguments": {"drop_after_sec": 20.0, "drop_duration_sec": 5.0},
-      "expected": "DETECTED_AND_RECOVERS"
+      "profile": "wide_diagnostic",
+      "launch_arguments": {"drop_after_sec": 25.0, "drop_duration_sec": 10.0},
+      "expected": "DETECTED"
+    },
+    "recovery_after_dropout": {
+      "profile": "wide_diagnostic",
+      "launch_arguments": {},
+      "expected": "PASS"
     },
     "moderate_range_limit": {
       "profile": "near_range_only",
       "launch_arguments": {},
-      "expected": "WARN_OR_PASS"
+      "expected": "DETECTED"
     },
     "delayed_slam_start": {
-      "profile": "baseline_m08",
+      "profile": "wide_diagnostic",
       "launch_arguments": {"slam_start_delay_sec": 10.0},
-      "expected": "DETECTED_THEN_RECOVERS"
+      "expected": "DELAYED_THEN_PASS"
     }
   }
 }

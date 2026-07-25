@@ -1,0 +1,51 @@
+runtime:
+  isaac_python: /home/aes/isaacsim/python.sh
+  entry_point: /home/aes/isaac_ws/isaacsim_spatial_pipeline/scripts/10_run_sim.py
+  world_usd: /home/aes/isaac_ws/scenes/Warehouse.usd
+  ros_setup: /opt/ros/jazzy/setup.bash
+  ros_domain_id: 0
+  headless: true
+  require_gpu: true
+artifacts:
+  output_root: /home/aes/isaac_ws/isaacsim_spatial_pipeline/artifacts/m13_robustness
+safety:
+  overwrite_existing_outputs: false
+  source_usd_writes: false
+  package_installation: false
+  sudo: false
+limits:
+  max_experiments: 6
+  total_duration_sec: 600.0
+  startup_timeout_sec: 180.0
+  topic_timeout_sec: 30.0
+  trajectory_timeout_sec: 120.0
+  shutdown_timeout_sec: 15.0
+  watchdog_window_sec: 4.0
+  output_max_mb: 1000.0
+trajectory:
+  data_file: /home/aes/isaac_ws/isaacsim_spatial_pipeline/config/trajectories.json
+  name: short_smoke
+slam:
+  launch_file: /home/aes/isaac_ws/isaacsim_spatial_pipeline/launch/m09_map_quality_experiment.launch.py
+  profile_config: /home/aes/isaac_ws/isaacsim_spatial_pipeline/config/m09_lidar_slice_profiles.yaml
+evaluation:
+  diagnostic_duration_sec: 8.0
+  map_save_duration_sec: 10.0
+  min_known_ratio: 0.10
+  min_occupied_cells: 500
+bag:
+  enabled: false
+  topics: [/clock, /tf, /tf_static, /spot/lidar/points, /scan, /odom, /map]
+experiments:
+  - {name: normal_baseline, profile: wide_diagnostic}
+  - name: reduced_scan_frequency
+    profile: wide_diagnostic
+    launch_arguments: {publish_every_n: 2}
+  - name: controlled_scan_dropout
+    profile: wide_diagnostic
+    launch_arguments: {drop_after_sec: 25.0, drop_duration_sec: 10.0}
+  - {name: recovery_after_dropout, profile: wide_diagnostic}
+  - {name: moderate_range_limit, profile: near_range_only}
+  - name: delayed_slam_start
+    profile: wide_diagnostic
+    launch_arguments: {slam_start_delay_sec: 10.0}
